@@ -32,8 +32,7 @@ on:
 
 jobs:
   bump-version:
-    if: github.event.pull_request.merged == true
-    if: github.actor != 'github-actions[bot]'
+    if: github.event.pull_request.merged == true && github.actor != 'github-actions[bot]'
 
     name: Bump Project Version
     runs-on: ubuntu-latest
