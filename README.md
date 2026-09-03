@@ -21,7 +21,7 @@ This action uses Semantic versioning scheme, in the form of MAJOR.MINOR.PATCH
 
 ```yml
 # .github/workflows/auto-version-bump.yml
-name: Auto Version Bump
+name: Bump Version By Labels
 
 on:
   pull_request:
@@ -32,10 +32,11 @@ on:
 
 jobs:
   bump-version:
+    if: github.event.pull_request.merged == true
+    if: github.actor != 'github-actions[bot]'
+
     name: Bump Project Version
     runs-on: ubuntu-latest
-
-    if: github.actor != 'github-actions[bot]'
 
     steps:
       - name: Checkout repository
