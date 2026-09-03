@@ -1,0 +1,18 @@
+name: 'bump-by-label'
+description: 'Bumps the version of a project based on the labels applied to a merged pull request.'
+inputs:
+  github_token:
+    description: 'GitHub token to authenticate with the GitHub API'
+    required: true
+  command:
+    description: 'The command to execute, that bumps the version. ie, `npm version` or `uv version --bump`'
+    required: true
+  validate:
+    description: 'The command to find the new version after bumping. ie, `npm version` or `uv version`'
+    required: true
+
+runs:
+  using: 'docker'
+  image: 'Dockerfile'
+  args:
+    - echo command
