@@ -12,7 +12,8 @@ inputs:
     required: true
 
 runs:
-  using: 'docker'
-  image: 'Dockerfile'
-  args:
-    - echo command
+  using: 'composite'
+  steps:
+    - name: Run bump-by-label
+      shell: bash
+      run: bash "${{ github.action_path }}/entrypoint.sh" "${{ inputs.github_token }}" "${{ inputs.command }}" "${{ inputs.validate }}"
