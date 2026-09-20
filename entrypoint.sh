@@ -4,6 +4,7 @@ set -e
 GITHUB_TOKEN=$1
 COMMAND=$2
 VALIDATE=$3
+BASE_BRANCH=${4:-main}
 
 export GH_TOKEN="$GITHUB_TOKEN"
 
@@ -77,7 +78,7 @@ git config --local user.name "GitHub Action"
 # reusing whatever the existing local/remote branch points at: the bump
 # branch is disposable and regenerated on every run, so a --force push is the
 # correct (and only reliable) way to publish it.
-git checkout -B "$BRANCH_NAME" origin/main
+git checkout -B "$BRANCH_NAME" "origin/${BASE_BRANCH}"
 git add -A
 git commit -m "chore: bump version to ${NEW_VERSION}"
 git push --force origin "$BRANCH_NAME"
@@ -88,7 +89,7 @@ else
   gh pr create \
     --title "chore: bump version to ${NEW_VERSION}" \
     --body "Automated version bump to ${NEW_VERSION}" \
-    --base main \
+    --base "$BASE_BRANCH" \
     --head "$BRANCH_NAME" \
     --assignee "$GITHUB_ACTOR"
 fi
