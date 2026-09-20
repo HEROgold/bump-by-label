@@ -43,7 +43,13 @@ if [ -z "$BUMP_TYPE" ]; then
 fi
 
 BRANCH_NAME="bump-version-${BUMP_TYPE}"
-EXISTING_BRANCH=$(git for-each-ref --format='%(refname:short)' refs/heads/bump-version-* | head -n 1)
+
+# Look for an already-pushed bump branch on the remote, not just locally: a
+# fresh checkout has no other local branches, so a local-only check here
+# never sees a branch left behind by a previous run and silently diverges
+# from it, causing a non-fast-forward push rejection later.
+git fetch origin 'refs/heads/bump-version-*:refs/remotes/origin/bump-version-*' 2>/dev/null || true
+EXISTING_BRANCH=$(git for-each-ref --format='%(refname:short)' refs/remotes/origin/bump-version-* | sed 's#^origin/##' | head -n 1)
 
 if [ -n "$EXISTING_BRANCH" ]; then
   echo "A bump-version-* branch already exists: $EXISTING_BRANCH"
@@ -67,13 +73,22 @@ fi
 git config --local user.email "action@github.com"
 git config --local user.name "GitHub Action"
 
-git checkout -b "$BRANCH_NAME" 2>/dev/null || git checkout "$BRANCH_NAME"
+# Always rebuild the branch from the current default branch tip rather than
+# reusing whatever the existing local/remote branch points at: the bump
+# branch is disposable and regenerated on every run, so a --force push is the
+# correct (and only reliable) way to publish it.
+git checkout -B "$BRANCH_NAME" origin/main
 git add -A
 git commit -m "chore: bump version to ${NEW_VERSION}"
-git push origin "$BRANCH_NAME"
+git push --force origin "$BRANCH_NAME"
 
-gh pr create \
-  --title "chore: bump version to ${NEW_VERSION}" \
-  --body "Automated version bump to ${NEW_VERSION}" \
-  --base main \
-  --assignee "$GITHUB_ACTOR"
+if gh pr view "$BRANCH_NAME" >/dev/null 2>&1; then
+  echo "PR for $BRANCH_NAME already exists; updated it with the force-push above."
+else
+  gh pr create \
+    --title "chore: bump version to ${NEW_VERSION}" \
+    --body "Automated version bump to ${NEW_VERSION}" \
+    --base main \
+    --head "$BRANCH_NAME" \
+    --assignee "$GITHUB_ACTOR"
+fi
