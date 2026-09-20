@@ -10,10 +10,14 @@ inputs:
   validate:
     description: 'The command to find the new version after bumping. ie, `npm version` or `uv version`'
     required: true
+  base_branch:
+    description: 'The default branch to rebase and open the bump PR against.'
+    required: false
+    default: 'main'
 
 runs:
   using: 'composite'
   steps:
     - name: Run bump-by-label
       shell: bash
-      run: bash "${{ github.action_path }}/entrypoint.sh" "${{ inputs.github_token }}" "${{ inputs.command }}" "${{ inputs.validate }}"
+      run: bash "${{ github.action_path }}/entrypoint.sh" "${{ inputs.github_token }}" "${{ inputs.command }}" "${{ inputs.validate }}" "${{ inputs.base_branch }}"
