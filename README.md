@@ -1,6 +1,6 @@
 # bump-by-label
 
-![](https://img.shields.io/badge/current_version-v1.0.0-blue)
+![](https://img.shields.io/badge/current_version-v3.0.0-blue)
 
 ## Overview
 
