@@ -7,9 +7,12 @@
 Bumps versions based on a merged PR's labels
 This action uses Semantic versioning scheme, in the form of MAJOR.MINOR.PATCH
 
-When a PR labelled `Major`, `Minor` or `Patch` merges, the action runs your
-`command` with that bump type, reads the new version with `validate`, commits
-the change on a `bump-version-<new>` branch and opens a PR for it.
+When a PR labelled `Major`, `Minor` or `Patch` merges, the action reads the
+current version with `validate`, runs your `command` with that bump type,
+reads the new version, commits the change on a
+`workflow/bump-version-from-<old>-to-<new>` branch and opens a PR titled
+`Bump version from <old> to <new>`. If the version didn't change, it logs
+"No version bump required." and stops.
 
 ## Inputs
 
@@ -19,6 +22,7 @@ the change on a `bump-version-<new>` branch and opens a PR for it.
 | `command` | yes | | Command that bumps the version, run by bash. The bump type (`major`, `minor` or `patch`) replaces `{bump}`, or is appended when there is no `{bump}`. |
 | `validate` | yes | | Command that prints the current version, run by bash. The first `MAJOR.MINOR.PATCH` in its output is used. |
 | `base_branch` | no | `main` | Branch the bump PR is opened against. |
+| `branch-prefix` | no | `workflow` | Prefix of the bump branch, `<prefix>/bump-version-from-<old>-to-<new>`. Empty for none. |
 | `commit-user-name` | no | `github-actions[bot]` | Author and committer name of the bump commit. |
 | `commit-user-email` | no | `41898282+github-actions[bot]@users.noreply.github.com` | Author and committer email; this one links commits to the bot account. |
 

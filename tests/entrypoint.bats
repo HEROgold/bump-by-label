@@ -5,6 +5,10 @@ setup() {
   setup_repo
 }
 
+remote_bump_branches() {
+  git --git-dir="$ORIGIN" for-each-ref --format='%(refname:short)' refs/heads | grep bump-version || true
+}
+
 @test "a Patch label bumps, pushes a branch and opens a PR" {
   bump Patch
 
@@ -25,14 +29,14 @@ setup() {
 @test "a PR without labels doesn't bump" {
   bump
   [ "$status" -eq 0 ]
-  ! git --git-dir="$ORIGIN" show-ref | grep -q bump-version
+  [ -z "$(remote_bump_branches)" ]
 }
 
 @test "a PR without a bump label doesn't bump" {
   bump documentation
   [ "$status" -eq 0 ]
   [[ "$output" == *"Version bump skipped"* ]]
-  ! git --git-dir="$ORIGIN" show-ref | grep -q bump-version
+  [ -z "$(remote_bump_branches)" ]
 }
 
 @test "an existing PR is updated, not created again" {
@@ -110,7 +114,7 @@ setup() {
 }
 
 @test "only the first version validate prints is used" {
-  export INPUT_VALIDATE="echo 'demo 1.2.4 (built with tool 9.9.9)'"
+  export INPUT_VALIDATE='echo "demo $(cat VERSION) (built with tool 9.9.9)"'
 
   bump Patch
 
@@ -173,6 +177,62 @@ setup() {
   [ "$status" -eq 0 ]
   author=$(git --git-dir="$ORIGIN" log -1 --format='%an <%ae>' "$(bump_branch 1.2.3 1.2.4)")
   [ "$author" = "release-bot[bot] <123+release-bot[bot]@users.noreply.github.com>" ]
+}
+
+@test "the branch and PR are named after the version change" {
+  bump Minor
+
+  [ "$status" -eq 0 ]
+  [ "$(remote_bump_branches)" = "workflow/bump-version-from-1.2.3-to-1.3.0" ]
+  gh_called "--title Bump\ version\ from\ 1.2.3\ to\ 1.3.0"
+  gh_called "--head workflow/bump-version-from-1.2.3-to-1.3.0"
+  [ "$(git --git-dir="$ORIGIN" log -1 --format=%s workflow/bump-version-from-1.2.3-to-1.3.0)" = "Bump version from 1.2.3 to 1.3.0" ]
+}
+
+@test "the branch prefix is configurable" {
+  export INPUT_BRANCH_PREFIX="release"
+
+  bump Patch
+
+  [ "$status" -eq 0 ]
+  [ "$(remote_bump_branches)" = "release/bump-version-from-1.2.3-to-1.2.4" ]
+}
+
+@test "no bump when the version doesn't change" {
+  export INPUT_COMMAND="true"
+
+  bump Patch
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"No version bump required."* ]]
+  [ -z "$(remote_bump_branches)" ]
+  ! gh_called "pr create"
+}
+
+@test "rerunning the same bump force-pushes the same branch" {
+  bump Patch
+  [ "$status" -eq 0 ]
+  first=$(git --git-dir="$ORIGIN" rev-parse workflow/bump-version-from-1.2.3-to-1.2.4)
+  git checkout -q -- . && git checkout -q main
+  echo "notes" > NOTES && git add NOTES
+  git -c user.name=dev -c user.email=dev@example.com commit -q -m notes && git push -q origin main
+
+  GH_PR_VIEW_EXIT=0 bump Patch
+
+  [ "$status" -eq 0 ]
+  [ "$(remote_bump_branches)" = "workflow/bump-version-from-1.2.3-to-1.2.4" ]
+  [ "$(git --git-dir="$ORIGIN" rev-parse workflow/bump-version-from-1.2.3-to-1.2.4)" != "$first" ]
+  [ "$(remote_file workflow/bump-version-from-1.2.3-to-1.2.4 NOTES)" = "notes" ]
+}
+
+@test "a different bump gets its own branch" {
+  git push -q origin main:workflow/bump-version-from-1.0.0-to-1.1.0
+
+  bump Patch
+
+  [ "$status" -eq 0 ]
+  gh_called "--head workflow/bump-version-from-1.2.3-to-1.2.4"
+  [ "$(remote_file workflow/bump-version-from-1.0.0-to-1.1.0 VERSION)" = "1.2.3" ]
 }
 
 @test "versions in validate's stderr are ignored" {
