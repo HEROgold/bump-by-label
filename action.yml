@@ -88,7 +88,7 @@ outputs:
     description: 'Number of the bump PR; empty when there is none.'
     value: ${{ steps.bump.outputs.pr-number }}
   tag:
-    description: 'Tag created when a bump PR merged; empty if none.'
+    description: 'Release tag this run created (a merged bump PR, or a push-mode bump); empty if none.'
     value: ${{ steps.bump.outputs.tag }}
 
 runs:

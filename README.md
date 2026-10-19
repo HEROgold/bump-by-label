@@ -50,7 +50,7 @@ Every run writes all outputs, also when it bumps nothing.
 | `new-version` | version after the bump; empty when nothing was bumped |
 | `bump-type` | `major` / `minor` / `patch` / `none` |
 | `pr-number` | the bump PR's number; empty when there is none |
-| `tag` | the tag created for the release; empty if none |
+| `tag` | release tag this run created (merged bump PR or push mode); empty if none |
 
 ```yml
       - id: bump

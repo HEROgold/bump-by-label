@@ -97,9 +97,15 @@ push_base_branch() {
     fi
     echo "Push to $BASE_BRANCH rejected (attempt $attempt); rebasing onto the latest $BASE_BRANCH."
     if ! git pull --rebase origin "$BASE_BRANCH"; then
-      git rebase --abort || true
-      echo "Error: the version bump conflicts with new commits on $BASE_BRANCH." \
-        "Nothing was pushed; rerun the workflow to bump from the latest $BASE_BRANCH." >&2
+      # A stopped rebase means a conflict; anything else (network, auth)
+      # failed before rebasing.
+      if git rev-parse -q --verify REBASE_HEAD >/dev/null; then
+        git rebase --abort
+        echo "Error: the version bump conflicts with new commits on $BASE_BRANCH." \
+          "Nothing was pushed; rerun the workflow to bump from the latest $BASE_BRANCH." >&2
+      else
+        echo "Error: git pull --rebase origin $BASE_BRANCH failed. Nothing was pushed." >&2
+      fi
       return 1
     fi
   done
