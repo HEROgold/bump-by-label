@@ -6,6 +6,14 @@ set -euo pipefail
 COMMAND=${INPUT_COMMAND:?INPUT_COMMAND (the command input) is required}
 VALIDATE=${INPUT_VALIDATE:?INPUT_VALIDATE (the validate input) is required}
 BASE_BRANCH=${INPUT_BASE_BRANCH:-main}
+MODE=${INPUT_MODE:-pr}
+case $MODE in
+  pr | push) ;;
+  *)
+    echo "Error: mode must be 'pr' or 'push', not '$MODE'." >&2
+    exit 1
+    ;;
+esac
 BRANCH_PREFIX=${INPUT_BRANCH_PREFIX-workflow}
 CREATE_TAG=${INPUT_CREATE_TAG:-true}
 TAG_PREFIX=${INPUT_TAG_PREFIX-v}
@@ -44,6 +52,60 @@ ensure_label() {
   echo "Creating label '$1'."
   gh label create "$1" --color "$2" --description "$3"
   REPO_LABELS+=$'\n'"$1"
+}
+
+# tag_release <sha>: tags <sha> as <tag-prefix><BUMPED_VERSION> unless that
+# tag exists, and moves the major and major.minor tags when moving-tags is on.
+tag_release() {
+  local sha=$1 release_tag="${TAG_PREFIX}${BUMPED_VERSION}" moving_tag
+  local major=${BUMPED_VERSION%%.*} minor
+  minor=${BUMPED_VERSION#*.}
+  minor=${minor%%.*}
+
+  if git ls-remote --exit-code --tags origin "refs/tags/$release_tag" >/dev/null; then
+    echo "Tag $release_tag already exists; not tagging."
+  else
+    git tag -a "$release_tag" -m "Release $release_tag" "$sha"
+    git push origin "refs/tags/$release_tag"
+    TAG=$release_tag
+    echo "Tagged $sha as $release_tag."
+  fi
+
+  # Moving tags follow only a release this run tagged, so they never end up
+  # on a commit the release tag doesn't point at.
+  if [ "$MOVING_TAGS" = true ] && [ -n "$TAG" ]; then
+    # The only force-pushes besides the bump branch, and only of these tags.
+    for moving_tag in "${TAG_PREFIX}${major}" "${TAG_PREFIX}${major}.${minor}"; do
+      git tag -f -a "$moving_tag" -m "Release $release_tag" "$sha"
+      git push -f origin "refs/tags/$moving_tag"
+      echo "Moved $moving_tag to $sha."
+    done
+  fi
+}
+
+# push_base_branch: pushes the bump commit to the base branch. When the push
+# is rejected because the base moved, rebases onto it and retries, up to 3
+# attempts. Never forces: a rebase conflict aborts and fails the run.
+push_base_branch() {
+  local attempt
+  for attempt in 1 2 3; do
+    if git push origin "HEAD:refs/heads/$BASE_BRANCH"; then
+      return 0
+    fi
+    if [ "$attempt" -eq 3 ]; then
+      break
+    fi
+    echo "Push to $BASE_BRANCH rejected (attempt $attempt); rebasing onto the latest $BASE_BRANCH."
+    if ! git pull --rebase origin "$BASE_BRANCH"; then
+      git rebase --abort || true
+      echo "Error: the version bump conflicts with new commits on $BASE_BRANCH." \
+        "Nothing was pushed; rerun the workflow to bump from the latest $BASE_BRANCH." >&2
+      return 1
+    fi
+  done
+  echo "Error: could not push to $BASE_BRANCH after 3 attempts." \
+    "Branch protection must let this token push (GITHUB_TOKEN can't bypass required reviews)." >&2
+  return 1
 }
 
 # Prints the first MAJOR.MINOR.PATCH that `validate` prints on stdout. Its
@@ -149,27 +211,7 @@ if [[ $HEAD_REF == "$BUMP_BRANCH_START"* ]] &&
   if ! git cat-file -e "${MERGE_SHA}^{commit}" 2>/dev/null; then
     git fetch -q origin "$MERGE_SHA"
   fi
-
-  RELEASE_TAG="${TAG_PREFIX}${BUMPED_VERSION}"
-  if git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" >/dev/null; then
-    echo "Tag $RELEASE_TAG already exists; not tagging."
-  else
-    git tag -a "$RELEASE_TAG" -m "Release $RELEASE_TAG" "$MERGE_SHA"
-    git push origin "refs/tags/$RELEASE_TAG"
-    TAG=$RELEASE_TAG
-    echo "Tagged $MERGE_SHA as $RELEASE_TAG."
-  fi
-
-  # Moving tags follow only a release this run tagged, so they never end up
-  # on a commit the release tag doesn't point at.
-  if [ "$MOVING_TAGS" = true ] && [ -n "$TAG" ]; then
-    # The only force-pushes besides the bump branch, and only of these tags.
-    for MOVING_TAG in "${TAG_PREFIX}${NEW[0]}" "${TAG_PREFIX}${NEW[0]}.${NEW[1]}"; do
-      git tag -f -a "$MOVING_TAG" -m "Release $RELEASE_TAG" "$MERGE_SHA"
-      git push -f origin "refs/tags/$MOVING_TAG"
-      echo "Moved $MOVING_TAG to $MERGE_SHA."
-    done
-  fi
+  tag_release "$MERGE_SHA"
   exit 0
 fi
 
@@ -187,6 +229,12 @@ fi
 if [ -z "$BUMP_TYPE" ]; then
   echo "No '$LABEL_MAJOR', '$LABEL_MINOR' or '$LABEL_PATCH' label found. Version bump skipped."
   exit 0
+fi
+
+if [ "$MODE" = push ]; then
+  # Push mode works on the base branch itself: plain pull and push only.
+  git checkout "$BASE_BRANCH"
+  git pull --ff-only origin "$BASE_BRANCH"
 fi
 
 echo "Validating the current version..."
@@ -216,6 +264,20 @@ if [ -n "$BRANCH_PREFIX" ]; then
   BRANCH_NAME="${BRANCH_PREFIX}/${BRANCH_NAME}"
 fi
 TITLE="Bump version from ${OLD_VERSION} to ${NEW_VERSION}"
+
+if [ "$MODE" = push ]; then
+  git add -A
+  git commit -m "$TITLE"
+  push_base_branch
+  VERSION_BUMPED=true
+  BUMPED_VERSION=$NEW_VERSION
+  echo "Pushed $TITLE to $BASE_BRANCH."
+  # No bump PR will merge later, so tag the pushed commit now.
+  if [ "$CREATE_TAG" = true ]; then
+    tag_release "$(git rev-parse HEAD)"
+  fi
+  exit 0
+fi
 
 # Always rebuild the branch from the current default branch tip rather than
 # reusing whatever the existing local/remote branch points at: the bump

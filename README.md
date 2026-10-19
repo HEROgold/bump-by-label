@@ -25,6 +25,7 @@ label logic and tags the merge commit `v<new>` (see [Tags](#tags)).
 | `command` | yes | | Command that bumps the version, run by bash. The bump type (`major`, `minor` or `patch`) replaces `{bump}`, or is appended when there is no `{bump}`. |
 | `validate` | yes | | Command that prints the current version, run by bash. The first `MAJOR.MINOR.PATCH` in its output is used. |
 | `base_branch` | no | `main` | Branch the bump PR is opened against. |
+| `mode` | no | `pr` | `pr` opens a bump PR; `push` commits the bump on the base branch (see [Push mode](#push-mode)). |
 | `label-major` / `label-minor` / `label-patch` | no | `Major` / `Minor` / `Patch` | Bump labels. Whole names, ignoring case: `dispatch` is not `Patch`. Major beats minor beats patch. |
 | `label-major-color` / `label-minor-color` / `label-patch-color` | no | `d93f0b` / `0e8a16` / `0075ca` | Colours for bump labels the action creates. |
 | `labels-to-add` | no | | Comma-separated labels for the bump PR, e.g. `release,skip-changelog`. Missing ones are created. |
@@ -130,6 +131,25 @@ action:
 Set `create-tag: false` when another workflow tags releases (for example one
 that releases when "the tag doesn't exist yet"). Bump PRs are then still
 recognised and skipped. GitHub Releases are not created.
+
+## Push mode
+
+With `mode: push` there is no bump PR. The action checks out the base branch,
+`git pull --ff-only`, bumps, commits and `git push`es. If the push is rejected
+because the base moved, it runs `git pull --rebase` and retries, up to 3
+attempts. A rebase conflict aborts the rebase and fails the run. It never uses
+`--force`, `--force-with-lease` or `reset --hard` on the base branch.
+
+With `create-tag` on, the pushed commit is tagged right away, since no bump PR
+will merge later. `pr-number` is empty.
+
+- The pushed commit doesn't trigger another bump: there is no PR, and the
+  workflow runs on `pull_request: closed`.
+- Branch protection must let the token push. `GITHUB_TOKEN` can't bypass
+  required reviews, so use an app token, a PAT or a ruleset bypass.
+- Pushes made with `GITHUB_TOKEN` don't trigger other workflows.
+
+Auto-merging the bump PR (#6) solves the same problem while keeping PR checks.
 
 ## Permissions and failures
 
