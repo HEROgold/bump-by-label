@@ -1,19 +1,35 @@
 #!/bin/bash
 set -e
 
-GITHUB_TOKEN=$1
-COMMAND=$2
-VALIDATE=$3
-BASE_BRANCH=${4:-main}
+# Inputs arrive as INPUT_* environment variables (see action.yml); GH_TOKEN
+# is set there too.
+COMMAND=$INPUT_COMMAND
+VALIDATE=$INPUT_VALIDATE
+BASE_BRANCH=${INPUT_BASE_BRANCH:-main}
 
-export GH_TOKEN="$GITHUB_TOKEN"
+# Helper scripts shipped with the action (semver-bump.sh) can be used in
+# `command` and `validate`.
+PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/scripts:$PATH"
 
-if [ -z "$GITHUB_EVENT_PATH" ]; then
+# Runs `command` through bash so its quoting works. `{bump}` is replaced by
+# the bump type; without it, the bump type is appended as the last argument.
+run_command() {
+  if [[ $COMMAND == *"{bump}"* ]]; then
+    bash -c "${COMMAND//\{bump\}/$BUMP_TYPE}"
+  else
+    bash -c "$COMMAND \"\$1\"" bump-by-label "$BUMP_TYPE"
+  fi
+}
+
+# BUMP_BY_LABEL_EVENT_PATH lets the e2e test supply its own event: the runner
+# resets GITHUB_EVENT_PATH for every step.
+EVENT_PATH=${BUMP_BY_LABEL_EVENT_PATH:-$GITHUB_EVENT_PATH}
+if [ -z "$EVENT_PATH" ]; then
   echo "Error: GITHUB_EVENT_PATH not found. Can only run in a GitHub Actions environment."
   exit 1
 fi
 
-LABELS=$(jq -r '.pull_request.labels[].name' "$GITHUB_EVENT_PATH" 2>/dev/null || echo "")
+LABELS=$(jq -r '.pull_request.labels[].name' "$EVENT_PATH" 2>/dev/null || echo "")
 
 # ensure there's labels on the repository.
 if [ -z "$LABELS" ]; then
@@ -61,12 +77,12 @@ fi
 echo "Running command: $COMMAND"
 echo "Found bump-type: $BUMP_TYPE"
 
-$COMMAND "$BUMP_TYPE"
+run_command
 NEW_VERSION="$BUMP_TYPE"
 
 if [ -n "$VALIDATE" ]; then
   echo "Validating the new version..."
-  NEW_VERSION=$($VALIDATE | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+')
+  NEW_VERSION=$(bash -c "$VALIDATE" | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+')
   echo "New version validated: $NEW_VERSION"
   BRANCH_NAME="bump-version-${NEW_VERSION}"
 fi

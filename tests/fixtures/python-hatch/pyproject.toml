@@ -1,0 +1,11 @@
+[project]
+name = "demo"
+dynamic = ["version"]
+requires-python = ">=3.9"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/demo/__about__.py"
