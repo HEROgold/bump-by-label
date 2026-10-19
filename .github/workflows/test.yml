@@ -142,13 +142,13 @@ jobs:
           chmod +x "$RUNNER_TEMP/bin/gh"
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
 
+          # The runner ignores GITHUB_EVENT_PATH set in `env:`, so replace the
+          # event file itself with a merged PR labelled Minor.
           jq -n '{pull_request: {number: 42, merged: true, head: {ref: "feature"},
-            base: {ref: "main"}, labels: [{name: "Minor"}]}}' > "$RUNNER_TEMP/event.json"
+            base: {ref: "main"}, labels: [{name: "Minor"}]}}' > "$GITHUB_EVENT_PATH"
 
       - name: Run the action
         uses: ./action
-        env:
-          GITHUB_EVENT_PATH: ${{ runner.temp }}/event.json
         with:
           github_token: unused
           command: npm version --no-git-tag-version
