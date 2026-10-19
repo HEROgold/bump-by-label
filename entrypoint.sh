@@ -21,12 +21,15 @@ run_command() {
   fi
 }
 
-if [ -z "$GITHUB_EVENT_PATH" ]; then
+# BUMP_BY_LABEL_EVENT_PATH lets the e2e test supply its own event: the runner
+# resets GITHUB_EVENT_PATH for every step.
+EVENT_PATH=${BUMP_BY_LABEL_EVENT_PATH:-$GITHUB_EVENT_PATH}
+if [ -z "$EVENT_PATH" ]; then
   echo "Error: GITHUB_EVENT_PATH not found. Can only run in a GitHub Actions environment."
   exit 1
 fi
 
-LABELS=$(jq -r '.pull_request.labels[].name' "$GITHUB_EVENT_PATH" 2>/dev/null || echo "")
+LABELS=$(jq -r '.pull_request.labels[].name' "$EVENT_PATH" 2>/dev/null || echo "")
 
 # ensure there's labels on the repository.
 if [ -z "$LABELS" ]; then

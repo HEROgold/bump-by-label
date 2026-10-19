@@ -14,7 +14,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: npm install -g bats@1.13.0
+      - name: Install bats
+        run: |
+          git clone -q --depth 1 --branch v1.13.0 https://github.com/bats-core/bats-core "$RUNNER_TEMP/bats-core"
+          sudo "$RUNNER_TEMP/bats-core/install.sh" /usr/local
       - run: bats tests/*.bats
 
   ecosystems:
@@ -46,7 +49,10 @@ jobs:
       REQUIRE_TOOLCHAIN: "1"
     steps:
       - uses: actions/checkout@v4
-      - run: npm install -g bats@1.13.0
+      - name: Install bats
+        run: |
+          git clone -q --depth 1 --branch v1.13.0 https://github.com/bats-core/bats-core "$RUNNER_TEMP/bats-core"
+          sudo "$RUNNER_TEMP/bats-core/install.sh" /usr/local
 
       - if: startsWith(matrix.suite, 'python-') || matrix.suite == 'meson'
         uses: astral-sh/setup-uv@v6
@@ -142,13 +148,15 @@ jobs:
           chmod +x "$RUNNER_TEMP/bin/gh"
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
 
-          # The runner ignores GITHUB_EVENT_PATH set in `env:`, so replace the
-          # event file itself with a merged PR labelled Minor.
+          # A merged PR labelled Minor. The runner resets GITHUB_EVENT_PATH for
+          # every step, so it's passed as BUMP_BY_LABEL_EVENT_PATH.
           jq -n '{pull_request: {number: 42, merged: true, head: {ref: "feature"},
-            base: {ref: "main"}, labels: [{name: "Minor"}]}}' > "$GITHUB_EVENT_PATH"
+            base: {ref: "main"}, labels: [{name: "Minor"}]}}' > "$RUNNER_TEMP/event.json"
 
       - name: Run the action
         uses: ./action
+        env:
+          BUMP_BY_LABEL_EVENT_PATH: ${{ runner.temp }}/event.json
         with:
           github_token: unused
           command: npm version --no-git-tag-version
