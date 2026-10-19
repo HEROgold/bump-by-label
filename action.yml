@@ -14,6 +14,34 @@ inputs:
     description: 'The default branch to rebase and open the bump PR against.'
     required: false
     default: 'main'
+  label-major:
+    description: 'Label that bumps the major version. Matched as a whole name, ignoring case.'
+    required: false
+    default: 'Major'
+  label-minor:
+    description: 'Label that bumps the minor version.'
+    required: false
+    default: 'Minor'
+  label-patch:
+    description: 'Label that bumps the patch version.'
+    required: false
+    default: 'Patch'
+  label-major-color:
+    description: 'Colour (hex, no #) for the major label when the action creates it.'
+    required: false
+    default: 'd93f0b'
+  label-minor-color:
+    description: 'Colour for the minor label when the action creates it.'
+    required: false
+    default: '0e8a16'
+  label-patch-color:
+    description: 'Colour for the patch label when the action creates it.'
+    required: false
+    default: '0075ca'
+  labels-to-add:
+    description: 'Comma-separated labels to put on the bump PR, e.g. `release,skip-changelog`. Missing ones are created.'
+    required: false
+    default: ''
   branch-prefix:
     description: 'Prefix of the bump branch, `<prefix>/bump-version-from-<old>-to-<new>`. Empty for no prefix.'
     required: false
@@ -72,6 +100,13 @@ runs:
         INPUT_COMMAND: ${{ inputs.command }}
         INPUT_VALIDATE: ${{ inputs.validate }}
         INPUT_BASE_BRANCH: ${{ inputs.base_branch }}
+        INPUT_LABEL_MAJOR: ${{ inputs.label-major }}
+        INPUT_LABEL_MINOR: ${{ inputs.label-minor }}
+        INPUT_LABEL_PATCH: ${{ inputs.label-patch }}
+        INPUT_LABEL_MAJOR_COLOR: ${{ inputs.label-major-color }}
+        INPUT_LABEL_MINOR_COLOR: ${{ inputs.label-minor-color }}
+        INPUT_LABEL_PATCH_COLOR: ${{ inputs.label-patch-color }}
+        INPUT_LABELS_TO_ADD: ${{ inputs.labels-to-add }}
         INPUT_BRANCH_PREFIX: ${{ inputs.branch-prefix }}
         INPUT_CREATE_TAG: ${{ inputs.create-tag }}
         INPUT_TAG_PREFIX: ${{ inputs.tag-prefix }}
