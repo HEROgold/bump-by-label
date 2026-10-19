@@ -46,7 +46,8 @@ setup_repo() {
 # as one shell-quoted line. Behaviour is steered by:
 #   GH_PR_VIEW_EXIT  exit status of `gh pr view` (default 1: no PR yet)
 #   GH_LABELS        output of `gh label list` (newline-separated names)
-#   GH_PR_CREATE_EXIT / GH_PR_CREATE_STDERR  make `gh pr create` fail
+#   GH_PR_CREATE_EXIT    make `gh pr create` fail with this status
+#   GH_PR_CREATE_STDERR  what `gh pr create` prints on stderr
 stub_gh() {
   GH_LOG="$BATS_TEST_TMPDIR/gh.log"
   : > "$GH_LOG"
@@ -57,13 +58,18 @@ stub_gh() {
 printf '%q ' "$@" >> "$GH_LOG"
 echo >> "$GH_LOG"
 case "$1 $2" in
-  "pr view") exit "${GH_PR_VIEW_EXIT:-1}" ;;
+  "pr view")
+    if [ "${GH_PR_VIEW_EXIT:-1}" -eq 0 ]; then echo "${GH_PR_NUMBER:-7}"; fi
+    exit "${GH_PR_VIEW_EXIT:-1}" ;;
   "pr create")
     if [ "${GH_PR_CREATE_EXIT:-0}" -ne 0 ]; then
       echo "${GH_PR_CREATE_STDERR:-}" >&2
       exit "$GH_PR_CREATE_EXIT"
     fi
-    echo "https://github.com/owner/repo/pull/${GH_PR_NUMBER:-7}" ;;
+    echo "https://github.com/owner/repo/pull/${GH_PR_NUMBER:-7}"
+    if [ -n "${GH_PR_CREATE_STDERR:-}" ]; then
+      echo "$GH_PR_CREATE_STDERR" >&2
+    fi ;;
   "label list") printf '%s\n' "${GH_LABELS:-}" | sed '/^$/d' ;;
 esac
 STUB
@@ -134,5 +140,28 @@ require() {
       fi
       skip "$tool not installed"
     fi
+  done
+}
+
+# output <name>: the last value written for <name> to $GITHUB_OUTPUT.
+output() {
+  grep "^$1=" "$GITHUB_OUTPUT" | tail -n 1 | cut -d= -f2-
+}
+
+# assert_outputs <name=value...>: every action output was written, and the
+# named ones have these values.
+assert_outputs() {
+  local name pair
+  for name in version-bumped previous-version new-version bump-type pr-number tag; do
+    grep -q "^$name=" "$GITHUB_OUTPUT" || {
+      echo "output $name was not written" >&2
+      return 1
+    }
+  done
+  for pair in "$@"; do
+    [ "$(output "${pair%%=*}")" = "${pair#*=}" ] || {
+      echo "output ${pair%%=*} is '$(output "${pair%%=*}")', expected '${pair#*=}'" >&2
+      return 1
+    }
   done
 }

@@ -26,6 +26,29 @@ reads the new version, commits the change on a
 | `commit-user-name` | no | `github-actions[bot]` | Author and committer name of the bump commit. |
 | `commit-user-email` | no | `41898282+github-actions[bot]@users.noreply.github.com` | Author and committer email; this one links commits to the bot account. |
 
+## Outputs
+
+Every run writes all outputs, also when it bumps nothing.
+
+| output | value |
+|---|---|
+| `version-bumped` | `true` when a bump commit was made, else `false` |
+| `previous-version` | version before the bump, from `validate`; empty when it wasn't read (no bump label) |
+| `new-version` | version after the bump; empty when nothing was bumped |
+| `bump-type` | `major` / `minor` / `patch` / `none` |
+| `pr-number` | the bump PR's number; empty when there is none |
+| `tag` | the tag created for the release; empty if none |
+
+```yml
+      - id: bump
+        uses: herogold/bump-by-label@main
+        with: ...
+      - if: steps.bump.outputs.version-bumped == 'true'
+        run: echo "Bumped to ${{ steps.bump.outputs.new-version }} in #${{ steps.bump.outputs.pr-number }}"
+```
+
+## Commands
+
 `command` and `validate` are run by bash, so quotes, pipes and `&&` work:
 `semver-bump.sh pom.xml '<artifactId>demo</artifactId>\s*<version>'`.
 
