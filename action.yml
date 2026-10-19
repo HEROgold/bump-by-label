@@ -14,6 +14,10 @@ inputs:
     description: 'The default branch to rebase and open the bump PR against.'
     required: false
     default: 'main'
+  mode:
+    description: '`pr` opens a bump PR. `push` commits the bump on the base branch and pushes it (never forced).'
+    required: false
+    default: 'pr'
   label-major:
     description: 'Label that bumps the major version. Matched as a whole name, ignoring case.'
     required: false
@@ -84,7 +88,7 @@ outputs:
     description: 'Number of the bump PR; empty when there is none.'
     value: ${{ steps.bump.outputs.pr-number }}
   tag:
-    description: 'Tag created when a bump PR merged; empty if none.'
+    description: 'Release tag this run created (a merged bump PR, or a push-mode bump); empty if none.'
     value: ${{ steps.bump.outputs.tag }}
 
 runs:
@@ -100,6 +104,7 @@ runs:
         INPUT_COMMAND: ${{ inputs.command }}
         INPUT_VALIDATE: ${{ inputs.validate }}
         INPUT_BASE_BRANCH: ${{ inputs.base_branch }}
+        INPUT_MODE: ${{ inputs.mode }}
         INPUT_LABEL_MAJOR: ${{ inputs.label-major }}
         INPUT_LABEL_MINOR: ${{ inputs.label-minor }}
         INPUT_LABEL_PATCH: ${{ inputs.label-patch }}
