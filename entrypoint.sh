@@ -21,11 +21,13 @@ run_command() {
   fi
 }
 
-# Prints the first MAJOR.MINOR.PATCH that `validate` prints. Fails the run
-# with the command and its output when it fails or prints no version.
+# Prints the first MAJOR.MINOR.PATCH that `validate` prints on stdout. Its
+# stderr goes to the log as is: tool warnings there often name versions.
+# Fails the run with the command and its output when it fails or prints no
+# version.
 read_version() {
   local output status=0 version
-  output=$(bash -c "$VALIDATE" 2>&1) || status=$?
+  output=$(bash -c "$VALIDATE") || status=$?
   if [ "$status" -ne 0 ]; then
     echo "Error: the validate command failed (exit $status): $VALIDATE" >&2
     echo "$output" >&2

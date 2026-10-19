@@ -155,3 +155,12 @@ setup() {
   [ "$status" -ne 0 ]
   [[ "$output" == *"Allow GitHub Actions to create and approve pull requests"* ]]
 }
+
+@test "versions in validate's stderr are ignored" {
+  export INPUT_VALIDATE="echo 'WARN: requires node >=18.0.0' >&2; cat VERSION"
+
+  bump Patch
+
+  [ "$status" -eq 0 ]
+  [ "$(remote_file "$(bump_branch 1.2.3 1.2.4)" VERSION)" = "1.2.4" ]
+}
