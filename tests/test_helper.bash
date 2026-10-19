@@ -57,7 +57,9 @@ stub_gh() {
 printf '%q ' "$@" >> "$GH_LOG"
 echo >> "$GH_LOG"
 case "$1 $2" in
-  "pr view") exit "${GH_PR_VIEW_EXIT:-1}" ;;
+  "pr view")
+    if [ "${GH_PR_VIEW_EXIT:-1}" -eq 0 ]; then echo "${GH_PR_NUMBER:-7}"; fi
+    exit "${GH_PR_VIEW_EXIT:-1}" ;;
   "pr create")
     if [ "${GH_PR_CREATE_EXIT:-0}" -ne 0 ]; then
       echo "${GH_PR_CREATE_STDERR:-}" >&2
@@ -134,5 +136,28 @@ require() {
       fi
       skip "$tool not installed"
     fi
+  done
+}
+
+# output <name>: the last value written for <name> to $GITHUB_OUTPUT.
+output() {
+  grep "^$1=" "$GITHUB_OUTPUT" | tail -n 1 | cut -d= -f2-
+}
+
+# assert_outputs <name=value...>: every action output was written, and the
+# named ones have these values.
+assert_outputs() {
+  local name pair
+  for name in version-bumped previous-version new-version bump-type pr-number tag; do
+    grep -q "^$name=" "$GITHUB_OUTPUT" || {
+      echo "output $name was not written" >&2
+      return 1
+    }
+  done
+  for pair in "$@"; do
+    [ "$(output "${pair%%=*}")" = "${pair#*=}" ] || {
+      echo "output ${pair%%=*} is '$(output "${pair%%=*}")', expected '${pair#*=}'" >&2
+      return 1
+    }
   done
 }

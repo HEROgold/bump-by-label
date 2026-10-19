@@ -235,6 +235,52 @@ remote_bump_branches() {
   [ "$(remote_file workflow/bump-version-from-1.0.0-to-1.1.0 VERSION)" = "1.2.3" ]
 }
 
+@test "outputs after a bump PR is opened" {
+  GH_PR_NUMBER=31 bump Minor
+
+  [ "$status" -eq 0 ]
+  assert_outputs version-bumped=true previous-version=1.2.3 new-version=1.3.0     bump-type=minor pr-number=31 tag=
+}
+
+@test "outputs after an existing bump PR is updated" {
+  GH_PR_VIEW_EXIT=0 GH_PR_NUMBER=12 bump Patch
+
+  [ "$status" -eq 0 ]
+  assert_outputs version-bumped=true new-version=1.2.4 pr-number=12
+}
+
+@test "outputs when the PR has no labels" {
+  bump
+
+  [ "$status" -eq 0 ]
+  assert_outputs version-bumped=false previous-version= new-version= bump-type=none pr-number= tag=
+}
+
+@test "outputs when the PR has no bump label" {
+  bump documentation
+
+  [ "$status" -eq 0 ]
+  assert_outputs version-bumped=false new-version= bump-type=none
+}
+
+@test "outputs when the version doesn't change" {
+  export INPUT_COMMAND="true"
+
+  bump Patch
+
+  [ "$status" -eq 0 ]
+  assert_outputs version-bumped=false previous-version=1.2.3 new-version= bump-type=patch pr-number=
+}
+
+@test "outputs are written when the run fails" {
+  export INPUT_COMMAND="exit 1"
+
+  bump Patch
+
+  [ "$status" -ne 0 ]
+  assert_outputs version-bumped=false previous-version=1.2.3 new-version=
+}
+
 @test "versions in validate's stderr are ignored" {
   export INPUT_VALIDATE="echo 'WARN: requires node >=18.0.0' >&2; cat VERSION"
 

@@ -48,6 +48,27 @@ read_version() {
   echo "$version"
 }
 
+# Action outputs. The EXIT trap writes all of them on every exit path, so
+# steps.<id>.outputs.version-bumped is never undefined.
+VERSION_BUMPED=false
+PREVIOUS_VERSION=""
+BUMPED_VERSION=""
+BUMP_TYPE=""
+PR_NUMBER=""
+TAG=""
+write_outputs() {
+  [ -n "${GITHUB_OUTPUT:-}" ] || return 0
+  {
+    echo "version-bumped=$VERSION_BUMPED"
+    echo "previous-version=$PREVIOUS_VERSION"
+    echo "new-version=$BUMPED_VERSION"
+    echo "bump-type=${BUMP_TYPE:-none}"
+    echo "pr-number=$PR_NUMBER"
+    echo "tag=$TAG"
+  } >>"$GITHUB_OUTPUT"
+}
+trap write_outputs EXIT
+
 # BUMP_BY_LABEL_EVENT_PATH lets the e2e test supply its own event: the runner
 # resets GITHUB_EVENT_PATH for every step.
 EVENT_PATH=${BUMP_BY_LABEL_EVENT_PATH:-${GITHUB_EVENT_PATH:-}}
@@ -73,7 +94,6 @@ fi
 
 # Determine the bump type based on the labels. Here-strings, not
 # `echo | grep -q`: with pipefail, grep -q exiting early can fail the echo.
-BUMP_TYPE=""
 if grep -iq "Major" <<<"$LABELS"; then
   BUMP_TYPE="major"
 elif grep -iq "Minor" <<<"$LABELS"; then
@@ -89,6 +109,7 @@ fi
 
 echo "Validating the current version..."
 OLD_VERSION=$(read_version)
+PREVIOUS_VERSION=$OLD_VERSION
 echo "Current version: $OLD_VERSION"
 
 echo "Running command: $COMMAND"
@@ -125,9 +146,12 @@ git checkout -B "$BRANCH_NAME" "origin/${BASE_BRANCH}"
 git add -A
 git commit -m "$TITLE"
 git push --force origin "$BRANCH_NAME"
+VERSION_BUMPED=true
+BUMPED_VERSION=$NEW_VERSION
 
-if gh pr view "$BRANCH_NAME" >/dev/null 2>&1; then
-  echo "PR for $BRANCH_NAME already exists; updated it with the force-push above."
+if EXISTING_PR=$(gh pr view "$BRANCH_NAME" --json number --jq .number 2>/dev/null); then
+  PR_NUMBER=$EXISTING_PR
+  echo "PR #$PR_NUMBER for $BRANCH_NAME already exists; updated it with the force-push above."
   exit 0
 fi
 
@@ -155,3 +179,5 @@ if [ "$PR_STATUS" -ne 0 ]; then
   fi
   exit "$PR_STATUS"
 fi
+# gh pr create prints the new PR's URL, which ends in its number.
+PR_NUMBER=${PR_OUTPUT##*/}
