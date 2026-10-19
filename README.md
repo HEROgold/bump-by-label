@@ -14,6 +14,9 @@ reads the new version, commits the change on a
 `Bump version from <old> to <new>`. If the version didn't change, it logs
 "No version bump required." and stops.
 
+When that bump PR merges, the same workflow sees its head branch, skips the
+label logic and tags the merge commit `v<new>` (see [Tags](#tags)).
+
 ## Inputs
 
 | input | required | default | description |
@@ -23,6 +26,9 @@ reads the new version, commits the change on a
 | `validate` | yes | | Command that prints the current version, run by bash. The first `MAJOR.MINOR.PATCH` in its output is used. |
 | `base_branch` | no | `main` | Branch the bump PR is opened against. |
 | `branch-prefix` | no | `workflow` | Prefix of the bump branch, `<prefix>/bump-version-from-<old>-to-<new>`. Empty for none. |
+| `create-tag` | no | `true` | Tag the merge commit when a bump PR merges. |
+| `tag-prefix` | no | `v` | Prefix of release tags. |
+| `moving-tags` | no | `false` | Also move `v<major>` and `v<major>.<minor>` to each release. |
 | `commit-user-name` | no | `github-actions[bot]` | Author and committer name of the bump commit. |
 | `commit-user-email` | no | `41898282+github-actions[bot]@users.noreply.github.com` | Author and committer email; this one links commits to the bot account. |
 
@@ -100,6 +106,24 @@ Each recipe is tested against a fixture project in
 
 Files that `command` or `validate` create (build dirs, caches) are committed
 with the bump unless they are in `.gitignore`.
+
+## Tags
+
+A merged PR whose head branch matches
+`^<branch-prefix>/bump-version-from-X.Y.Z-to-X.Y.Z$` is a bump PR. For it the
+action:
+
+1. tags the PR's merge commit `<tag-prefix><new>` and pushes the tag. An
+   existing tag is never overwritten; the action logs it and goes on;
+2. with `moving-tags: true`, moves `<tag-prefix><major>` and
+   `<tag-prefix><major>.<minor>` to the merge commit (force-pushing only
+   those tags);
+3. sets `version-bumped=true`, `previous-version`, `new-version`, `bump-type`
+   and `tag`, and bumps nothing.
+
+Set `create-tag: false` when another workflow tags releases (for example one
+that releases when "the tag doesn't exist yet"). Bump PRs are then still
+recognised and skipped. GitHub Releases are not created.
 
 ## Permissions and failures
 
