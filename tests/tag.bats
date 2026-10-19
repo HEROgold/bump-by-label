@@ -29,6 +29,33 @@ remote_tag() {
     bump-type=patch pr-number=42 tag=v1.2.4
 }
 
+@test "a bump PR closed without merging isn't tagged" {
+  PR_HEAD_REF=workflow/bump-version-from-1.2.3-to-1.2.4 pr_event
+  jq '.pull_request.merged = false' "$GITHUB_EVENT_PATH" > "$BATS_TEST_TMPDIR/e.json"
+  mv "$BATS_TEST_TMPDIR/e.json" "$GITHUB_EVENT_PATH"
+
+  run bash "$ENTRYPOINT"
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"not merged"* ]]
+  [ -z "$(git --git-dir="$ORIGIN" tag)" ]
+  assert_outputs version-bumped=false tag=
+}
+
+@test "moving tags stay put when the release tag already exists" {
+  git tag v1.2.4 && git tag v1 && git push -q origin v1.2.4 v1
+  echo change > CHANGE && git add CHANGE
+  git -c user.name=dev -c user.email=dev@example.com commit -q -m change && git push -q origin main
+  export MERGE_SHA INPUT_MOVING_TAGS=true
+  MERGE_SHA=$(git rev-parse HEAD)
+
+  merge_bump_pr workflow/bump-version-from-1.2.3-to-1.2.4
+
+  [ "$status" -eq 0 ]
+  [ "$(remote_tag v1)" = "$(git rev-parse HEAD~1)" ]
+  ! remote_tag v1.2
+}
+
 @test "the tag is annotated by the commit identity" {
   merge_bump_pr workflow/bump-version-from-1.2.3-to-2.0.0
 

@@ -93,6 +93,12 @@ fi
 SEMVER_RE='([0-9]+)\.([0-9]+)\.([0-9]+)'
 if [[ $HEAD_REF == "$BUMP_BRANCH_START"* ]] &&
   [[ ${HEAD_REF#"$BUMP_BRANCH_START"} =~ ^${SEMVER_RE}-to-${SEMVER_RE}$ ]]; then
+  # An open or closed-unmerged PR also has a merge_commit_sha (a test merge),
+  # which must never be tagged as a release.
+  if [ "$(jq -r '.pull_request.merged // false' "$EVENT_PATH")" != true ]; then
+    echo "Bump PR from $HEAD_REF is not merged; nothing to tag."
+    exit 0
+  fi
   OLD=("${BASH_REMATCH[@]:1:3}")
   NEW=("${BASH_REMATCH[@]:4:3}")
   PREVIOUS_VERSION="${OLD[0]}.${OLD[1]}.${OLD[2]}"
@@ -132,7 +138,9 @@ if [[ $HEAD_REF == "$BUMP_BRANCH_START"* ]] &&
     echo "Tagged $MERGE_SHA as $RELEASE_TAG."
   fi
 
-  if [ "$MOVING_TAGS" = true ]; then
+  # Moving tags follow only a release this run tagged, so they never end up
+  # on a commit the release tag doesn't point at.
+  if [ "$MOVING_TAGS" = true ] && [ -n "$TAG" ]; then
     # The only force-pushes besides the bump branch, and only of these tags.
     for MOVING_TAG in "${TAG_PREFIX}${NEW[0]}" "${TAG_PREFIX}${NEW[0]}.${NEW[1]}"; do
       git tag -f -a "$MOVING_TAG" -m "Release $RELEASE_TAG" "$MERGE_SHA"
