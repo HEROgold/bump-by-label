@@ -7,6 +7,9 @@ COMMAND=${INPUT_COMMAND:?INPUT_COMMAND (the command input) is required}
 VALIDATE=${INPUT_VALIDATE:?INPUT_VALIDATE (the validate input) is required}
 BASE_BRANCH=${INPUT_BASE_BRANCH:-main}
 BRANCH_PREFIX=${INPUT_BRANCH_PREFIX-workflow}
+CREATE_TAG=${INPUT_CREATE_TAG:-true}
+TAG_PREFIX=${INPUT_TAG_PREFIX-v}
+MOVING_TAGS=${INPUT_MOVING_TAGS:-false}
 # 41898282 is the user id of github-actions[bot]; this noreply address is
 # what links commits to the bot account.
 COMMIT_USER_NAME=${INPUT_COMMIT_USER_NAME:-github-actions[bot]}
@@ -77,6 +80,77 @@ if [ -z "$EVENT_PATH" ]; then
   exit 1
 fi
 
+git config --local user.name "$COMMIT_USER_NAME"
+git config --local user.email "$COMMIT_USER_EMAIL"
+
+# A merged bump PR (its head branch is a bump branch, see below) releases
+# the version it bumped to: tag the merge commit and skip the label logic.
+HEAD_REF=$(jq -r '.pull_request.head.ref // ""' "$EVENT_PATH")
+BUMP_BRANCH_START="bump-version-from-"
+if [ -n "$BRANCH_PREFIX" ]; then
+  BUMP_BRANCH_START="${BRANCH_PREFIX}/${BUMP_BRANCH_START}"
+fi
+SEMVER_RE='([0-9]+)\.([0-9]+)\.([0-9]+)'
+if [[ $HEAD_REF == "$BUMP_BRANCH_START"* ]] &&
+  [[ ${HEAD_REF#"$BUMP_BRANCH_START"} =~ ^${SEMVER_RE}-to-${SEMVER_RE}$ ]]; then
+  # An open or closed-unmerged PR also has a merge_commit_sha (a test merge),
+  # which must never be tagged as a release.
+  if [ "$(jq -r '.pull_request.merged // false' "$EVENT_PATH")" != true ]; then
+    echo "Bump PR from $HEAD_REF is not merged; nothing to tag."
+    exit 0
+  fi
+  OLD=("${BASH_REMATCH[@]:1:3}")
+  NEW=("${BASH_REMATCH[@]:4:3}")
+  PREVIOUS_VERSION="${OLD[0]}.${OLD[1]}.${OLD[2]}"
+  BUMPED_VERSION="${NEW[0]}.${NEW[1]}.${NEW[2]}"
+  VERSION_BUMPED=true
+  PR_NUMBER=$(jq -r '.pull_request.number // ""' "$EVENT_PATH")
+  if [ "${NEW[0]}" != "${OLD[0]}" ]; then
+    BUMP_TYPE="major"
+  elif [ "${NEW[1]}" != "${OLD[1]}" ]; then
+    BUMP_TYPE="minor"
+  else
+    BUMP_TYPE="patch"
+  fi
+  echo "PR #$PR_NUMBER ($HEAD_REF) is a bump PR for $BUMPED_VERSION; skipping the version bump."
+
+  if [ "$CREATE_TAG" != true ]; then
+    echo "create-tag is off; not tagging."
+    exit 0
+  fi
+
+  MERGE_SHA=$(jq -r '.pull_request.merge_commit_sha // ""' "$EVENT_PATH")
+  if [ -z "$MERGE_SHA" ]; then
+    echo "Error: the event has no pull_request.merge_commit_sha to tag." >&2
+    exit 1
+  fi
+  if ! git cat-file -e "${MERGE_SHA}^{commit}" 2>/dev/null; then
+    git fetch -q origin "$MERGE_SHA"
+  fi
+
+  RELEASE_TAG="${TAG_PREFIX}${BUMPED_VERSION}"
+  if git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" >/dev/null; then
+    echo "Tag $RELEASE_TAG already exists; not tagging."
+  else
+    git tag -a "$RELEASE_TAG" -m "Release $RELEASE_TAG" "$MERGE_SHA"
+    git push origin "refs/tags/$RELEASE_TAG"
+    TAG=$RELEASE_TAG
+    echo "Tagged $MERGE_SHA as $RELEASE_TAG."
+  fi
+
+  # Moving tags follow only a release this run tagged, so they never end up
+  # on a commit the release tag doesn't point at.
+  if [ "$MOVING_TAGS" = true ] && [ -n "$TAG" ]; then
+    # The only force-pushes besides the bump branch, and only of these tags.
+    for MOVING_TAG in "${TAG_PREFIX}${NEW[0]}" "${TAG_PREFIX}${NEW[0]}.${NEW[1]}"; do
+      git tag -f -a "$MOVING_TAG" -m "Release $RELEASE_TAG" "$MERGE_SHA"
+      git push -f origin "refs/tags/$MOVING_TAG"
+      echo "Moved $MOVING_TAG to $MERGE_SHA."
+    done
+  fi
+  exit 0
+fi
+
 LABELS=$(jq -r '.pull_request.labels[].name' "$EVENT_PATH" 2>/dev/null || echo "")
 
 # ensure there's labels on the repository.
@@ -134,9 +208,6 @@ if [ -n "$BRANCH_PREFIX" ]; then
   BRANCH_NAME="${BRANCH_PREFIX}/${BRANCH_NAME}"
 fi
 TITLE="Bump version from ${OLD_VERSION} to ${NEW_VERSION}"
-
-git config --local user.name "$COMMIT_USER_NAME"
-git config --local user.email "$COMMIT_USER_EMAIL"
 
 # Always rebuild the branch from the current default branch tip rather than
 # reusing whatever the existing local/remote branch points at: the bump

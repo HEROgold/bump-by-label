@@ -18,6 +18,18 @@ inputs:
     description: 'Prefix of the bump branch, `<prefix>/bump-version-from-<old>-to-<new>`. Empty for no prefix.'
     required: false
     default: 'workflow'
+  create-tag:
+    description: 'Tag the merge commit `<tag-prefix><new>` when a bump PR merges. Set to `false` when another workflow tags releases.'
+    required: false
+    default: 'true'
+  tag-prefix:
+    description: 'Prefix of release tags.'
+    required: false
+    default: 'v'
+  moving-tags:
+    description: 'Also move `<tag-prefix><major>` and `<tag-prefix><major>.<minor>` to the release (force-pushes those tags).'
+    required: false
+    default: 'false'
   commit-user-name:
     description: 'Git author and committer name for the bump commit. Change it when pushing with an app token or PAT.'
     required: false
@@ -44,7 +56,7 @@ outputs:
     description: 'Number of the bump PR; empty when there is none.'
     value: ${{ steps.bump.outputs.pr-number }}
   tag:
-    description: 'Tag created for the release; empty if none.'
+    description: 'Tag created when a bump PR merged; empty if none.'
     value: ${{ steps.bump.outputs.tag }}
 
 runs:
@@ -61,6 +73,9 @@ runs:
         INPUT_VALIDATE: ${{ inputs.validate }}
         INPUT_BASE_BRANCH: ${{ inputs.base_branch }}
         INPUT_BRANCH_PREFIX: ${{ inputs.branch-prefix }}
+        INPUT_CREATE_TAG: ${{ inputs.create-tag }}
+        INPUT_TAG_PREFIX: ${{ inputs.tag-prefix }}
+        INPUT_MOVING_TAGS: ${{ inputs.moving-tags }}
         INPUT_COMMIT_USER_NAME: ${{ inputs.commit-user-name }}
         INPUT_COMMIT_USER_EMAIL: ${{ inputs.commit-user-email }}
       run: bash "${{ github.action_path }}/entrypoint.sh"
