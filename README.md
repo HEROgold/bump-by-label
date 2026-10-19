@@ -72,6 +72,16 @@ Each recipe is tested against a fixture project in
 Files that `command` or `validate` create (build dirs, caches) are committed
 with the bump unless they are in `.gitignore`.
 
+## Permissions and failures
+
+The token needs `contents: write` and `pull-requests: write`. With
+`GITHUB_TOKEN`, also turn on *Settings → Actions → General → Workflow
+permissions → Allow GitHub Actions to create and approve pull requests*; the
+action fails with that hint when `gh pr create` is refused.
+
+The run fails, naming the command and its output, when `command` fails, or
+when `validate` fails or prints no `MAJOR.MINOR.PATCH`.
+
 ## Example usage
 
 ```yml

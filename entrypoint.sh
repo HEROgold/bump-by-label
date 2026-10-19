@@ -1,10 +1,10 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 
 # Inputs arrive as INPUT_* environment variables (see action.yml); GH_TOKEN
 # is set there too.
-COMMAND=$INPUT_COMMAND
-VALIDATE=$INPUT_VALIDATE
+COMMAND=${INPUT_COMMAND:?INPUT_COMMAND (the command input) is required}
+VALIDATE=${INPUT_VALIDATE:?INPUT_VALIDATE (the validate input) is required}
 BASE_BRANCH=${INPUT_BASE_BRANCH:-main}
 
 # Helper scripts shipped with the action (semver-bump.sh) can be used in
@@ -21,9 +21,31 @@ run_command() {
   fi
 }
 
+# Prints the first MAJOR.MINOR.PATCH that `validate` prints on stdout. Its
+# stderr goes to the log as is: tool warnings there often name versions.
+# Fails the run with the command and its output when it fails or prints no
+# version.
+read_version() {
+  local output status=0 version
+  output=$(bash -c "$VALIDATE") || status=$?
+  if [ "$status" -ne 0 ]; then
+    echo "Error: the validate command failed (exit $status): $VALIDATE" >&2
+    echo "$output" >&2
+    return 1
+  fi
+  # No match is handled below, so grep's exit status is ignored on purpose.
+  version=$(grep -Eo '[0-9]+\.[0-9]+\.[0-9]+' <<<"$output" | head -n 1) || true
+  if [ -z "$version" ]; then
+    echo "Error: the validate command printed no MAJOR.MINOR.PATCH version: $VALIDATE" >&2
+    echo "$output" >&2
+    return 1
+  fi
+  echo "$version"
+}
+
 # BUMP_BY_LABEL_EVENT_PATH lets the e2e test supply its own event: the runner
 # resets GITHUB_EVENT_PATH for every step.
-EVENT_PATH=${BUMP_BY_LABEL_EVENT_PATH:-$GITHUB_EVENT_PATH}
+EVENT_PATH=${BUMP_BY_LABEL_EVENT_PATH:-${GITHUB_EVENT_PATH:-}}
 if [ -z "$EVENT_PATH" ]; then
   echo "Error: GITHUB_EVENT_PATH not found. Can only run in a GitHub Actions environment."
   exit 1
@@ -44,13 +66,14 @@ if [ -z "$LABELS" ]; then
   exit 0
 fi
 
-# Determine the bump type based on the labels
+# Determine the bump type based on the labels. Here-strings, not
+# `echo | grep -q`: with pipefail, grep -q exiting early can fail the echo.
 BUMP_TYPE=""
-if echo "$LABELS" | grep -iq "Major"; then
+if grep -iq "Major" <<<"$LABELS"; then
   BUMP_TYPE="major"
-elif echo "$LABELS" | grep -iq "Minor"; then
+elif grep -iq "Minor" <<<"$LABELS"; then
   BUMP_TYPE="minor"
-elif echo "$LABELS" | grep -iq "Patch"; then
+elif grep -iq "Patch" <<<"$LABELS"; then
   BUMP_TYPE="patch"
 fi
 
@@ -78,14 +101,11 @@ echo "Running command: $COMMAND"
 echo "Found bump-type: $BUMP_TYPE"
 
 run_command
-NEW_VERSION="$BUMP_TYPE"
 
-if [ -n "$VALIDATE" ]; then
-  echo "Validating the new version..."
-  NEW_VERSION=$(bash -c "$VALIDATE" | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+')
-  echo "New version validated: $NEW_VERSION"
-  BRANCH_NAME="bump-version-${NEW_VERSION}"
-fi
+echo "Validating the new version..."
+NEW_VERSION=$(read_version)
+echo "New version validated: $NEW_VERSION"
+BRANCH_NAME="bump-version-${NEW_VERSION}"
 
 git config --local user.email "action@github.com"
 git config --local user.name "GitHub Action"
@@ -101,11 +121,30 @@ git push --force origin "$BRANCH_NAME"
 
 if gh pr view "$BRANCH_NAME" >/dev/null 2>&1; then
   echo "PR for $BRANCH_NAME already exists; updated it with the force-push above."
-else
-  gh pr create \
-    --title "chore: bump version to ${NEW_VERSION}" \
-    --body "Automated version bump to ${NEW_VERSION}" \
-    --base "$BASE_BRANCH" \
-    --head "$BRANCH_NAME" \
-    --assignee "$GITHUB_ACTOR"
+  exit 0
+fi
+
+PR_ARGS=(
+  --title "chore: bump version to ${NEW_VERSION}"
+  --body "Automated version bump to ${NEW_VERSION}"
+  --base "$BASE_BRANCH"
+  --head "$BRANCH_NAME"
+)
+if [ -n "${GITHUB_ACTOR:-}" ]; then
+  PR_ARGS+=(--assignee "$GITHUB_ACTOR")
+fi
+
+PR_STATUS=0
+PR_OUTPUT=$(gh pr create "${PR_ARGS[@]}" 2>&1) || PR_STATUS=$?
+echo "$PR_OUTPUT"
+if [ "$PR_STATUS" -ne 0 ]; then
+  if grep -q "not permitted to create or approve pull requests" <<<"$PR_OUTPUT"; then
+    echo "Error: GitHub Actions may not open PRs in this repository. Turn on" \
+      "Settings > Actions > General > Workflow permissions >" \
+      "\"Allow GitHub Actions to create and approve pull requests\"," \
+      "or pass a PAT or app token as github_token." >&2
+  else
+    echo "Error: gh pr create failed (exit $PR_STATUS)." >&2
+  fi
+  exit "$PR_STATUS"
 fi
