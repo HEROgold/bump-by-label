@@ -6,6 +6,10 @@ set -euo pipefail
 COMMAND=${INPUT_COMMAND:?INPUT_COMMAND (the command input) is required}
 VALIDATE=${INPUT_VALIDATE:?INPUT_VALIDATE (the validate input) is required}
 BASE_BRANCH=${INPUT_BASE_BRANCH:-main}
+# 41898282 is the user id of github-actions[bot]; this noreply address is
+# what links commits to the bot account.
+COMMIT_USER_NAME=${INPUT_COMMIT_USER_NAME:-github-actions[bot]}
+COMMIT_USER_EMAIL=${INPUT_COMMIT_USER_EMAIL:-41898282+github-actions[bot]@users.noreply.github.com}
 
 # Helper scripts shipped with the action (semver-bump.sh) can be used in
 # `command` and `validate`.
@@ -107,8 +111,8 @@ NEW_VERSION=$(read_version)
 echo "New version validated: $NEW_VERSION"
 BRANCH_NAME="bump-version-${NEW_VERSION}"
 
-git config --local user.email "action@github.com"
-git config --local user.name "GitHub Action"
+git config --local user.name "$COMMIT_USER_NAME"
+git config --local user.email "$COMMIT_USER_EMAIL"
 
 # Always rebuild the branch from the current default branch tip rather than
 # reusing whatever the existing local/remote branch points at: the bump
