@@ -5,10 +5,10 @@ inputs:
     description: 'GitHub token to authenticate with the GitHub API'
     required: true
   command:
-    description: 'The command to execute, that bumps the version. ie, `npm version` or `uv version --bump`'
+    description: 'Command that bumps the version, run by bash. The bump type (major, minor or patch) replaces `{bump}`, or is appended when there is no `{bump}`. E.g. `uv version --no-sync --bump`. `semver-bump.sh` from this action is on PATH.'
     required: true
   validate:
-    description: 'The command to find the new version after bumping. ie, `npm version` or `uv version`'
+    description: 'Command that prints the current version, run by bash. E.g. `uv version --short`. The first MAJOR.MINOR.PATCH in its output is used.'
     required: true
   base_branch:
     description: 'The default branch to rebase and open the bump PR against.'
@@ -20,4 +20,11 @@ runs:
   steps:
     - name: Run bump-by-label
       shell: bash
-      run: bash "${{ github.action_path }}/entrypoint.sh" "${{ inputs.github_token }}" "${{ inputs.command }}" "${{ inputs.validate }}" "${{ inputs.base_branch }}"
+      # Inputs go through env, not the command line, so their quotes reach
+      # entrypoint.sh intact and can't break out of the run script.
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
+        INPUT_COMMAND: ${{ inputs.command }}
+        INPUT_VALIDATE: ${{ inputs.validate }}
+        INPUT_BASE_BRANCH: ${{ inputs.base_branch }}
+      run: bash "${{ github.action_path }}/entrypoint.sh"

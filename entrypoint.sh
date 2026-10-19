@@ -1,12 +1,25 @@
 #!/bin/bash
 set -e
 
-GITHUB_TOKEN=$1
-COMMAND=$2
-VALIDATE=$3
-BASE_BRANCH=${4:-main}
+# Inputs arrive as INPUT_* environment variables (see action.yml); GH_TOKEN
+# is set there too.
+COMMAND=$INPUT_COMMAND
+VALIDATE=$INPUT_VALIDATE
+BASE_BRANCH=${INPUT_BASE_BRANCH:-main}
 
-export GH_TOKEN="$GITHUB_TOKEN"
+# Helper scripts shipped with the action (semver-bump.sh) can be used in
+# `command` and `validate`.
+PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/scripts:$PATH"
+
+# Runs `command` through bash so its quoting works. `{bump}` is replaced by
+# the bump type; without it, the bump type is appended as the last argument.
+run_command() {
+  if [[ $COMMAND == *"{bump}"* ]]; then
+    bash -c "${COMMAND//\{bump\}/$BUMP_TYPE}"
+  else
+    bash -c "$COMMAND \"\$1\"" bump-by-label "$BUMP_TYPE"
+  fi
+}
 
 if [ -z "$GITHUB_EVENT_PATH" ]; then
   echo "Error: GITHUB_EVENT_PATH not found. Can only run in a GitHub Actions environment."
@@ -61,12 +74,12 @@ fi
 echo "Running command: $COMMAND"
 echo "Found bump-type: $BUMP_TYPE"
 
-$COMMAND "$BUMP_TYPE"
+run_command
 NEW_VERSION="$BUMP_TYPE"
 
 if [ -n "$VALIDATE" ]; then
   echo "Validating the new version..."
-  NEW_VERSION=$($VALIDATE | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+')
+  NEW_VERSION=$(bash -c "$VALIDATE" | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+')
   echo "New version validated: $NEW_VERSION"
   BRANCH_NAME="bump-version-${NEW_VERSION}"
 fi
