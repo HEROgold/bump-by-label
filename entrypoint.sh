@@ -179,5 +179,7 @@ if [ "$PR_STATUS" -ne 0 ]; then
   fi
   exit "$PR_STATUS"
 fi
-# gh pr create prints the new PR's URL, which ends in its number.
-PR_NUMBER=${PR_OUTPUT##*/}
+# gh pr create prints the new PR's URL, which ends in its number. The output
+# includes stderr, so take the URL rather than the last line.
+PR_NUMBER=$(grep -Eo '/pull/[0-9]+' <<<"$PR_OUTPUT" | tail -n 1) || true
+PR_NUMBER=${PR_NUMBER##*/}

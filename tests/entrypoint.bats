@@ -242,6 +242,14 @@ remote_bump_branches() {
   assert_outputs version-bumped=true previous-version=1.2.3 new-version=1.3.0     bump-type=minor pr-number=31 tag=
 }
 
+@test "pr-number ignores warnings gh prints after the URL" {
+  GH_PR_NUMBER=31 GH_PR_CREATE_STDERR="Warning: 2 uncommitted changes" bump Minor
+
+  [ "$status" -eq 0 ]
+  assert_outputs pr-number=31
+  ! grep -q "Warning" "$GITHUB_OUTPUT"
+}
+
 @test "outputs after an existing bump PR is updated" {
   GH_PR_VIEW_EXIT=0 GH_PR_NUMBER=12 bump Patch
 

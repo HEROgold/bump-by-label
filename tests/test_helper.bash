@@ -46,7 +46,8 @@ setup_repo() {
 # as one shell-quoted line. Behaviour is steered by:
 #   GH_PR_VIEW_EXIT  exit status of `gh pr view` (default 1: no PR yet)
 #   GH_LABELS        output of `gh label list` (newline-separated names)
-#   GH_PR_CREATE_EXIT / GH_PR_CREATE_STDERR  make `gh pr create` fail
+#   GH_PR_CREATE_EXIT    make `gh pr create` fail with this status
+#   GH_PR_CREATE_STDERR  what `gh pr create` prints on stderr
 stub_gh() {
   GH_LOG="$BATS_TEST_TMPDIR/gh.log"
   : > "$GH_LOG"
@@ -65,7 +66,10 @@ case "$1 $2" in
       echo "${GH_PR_CREATE_STDERR:-}" >&2
       exit "$GH_PR_CREATE_EXIT"
     fi
-    echo "https://github.com/owner/repo/pull/${GH_PR_NUMBER:-7}" ;;
+    echo "https://github.com/owner/repo/pull/${GH_PR_NUMBER:-7}"
+    if [ -n "${GH_PR_CREATE_STDERR:-}" ]; then
+      echo "$GH_PR_CREATE_STDERR" >&2
+    fi ;;
   "label list") printf '%s\n' "${GH_LABELS:-}" | sed '/^$/d' ;;
 esac
 STUB
