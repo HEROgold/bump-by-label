@@ -85,3 +85,73 @@ setup() {
   [ "$status" -ne 0 ]
   [[ "$output" == *"GITHUB_EVENT_PATH"* ]]
 }
+
+@test "a failing validate fails the run, naming the command and its output" {
+  export INPUT_VALIDATE="echo 'boom: no project here' >&2; exit 3"
+
+  bump Patch
+
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"validate command failed"* ]]
+  [[ "$output" == *"exit 3"* ]]
+  [[ "$output" == *"boom: no project here"* ]]
+  ! gh_called "pr create"
+}
+
+@test "a validate that prints no version fails the run" {
+  export INPUT_VALIDATE="echo 'version: dev'"
+
+  bump Patch
+
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"printed no MAJOR.MINOR.PATCH version"* ]]
+  [[ "$output" == *"version: dev"* ]]
+  ! gh_called "pr create"
+}
+
+@test "only the first version validate prints is used" {
+  export INPUT_VALIDATE="echo 'demo 1.2.4 (built with tool 9.9.9)'"
+
+  bump Patch
+
+  [ "$status" -eq 0 ]
+  [ "$(remote_file "$(bump_branch 1.2.3 1.2.4)" VERSION)" = "1.2.4" ]
+}
+
+@test "a failing command fails the run" {
+  export INPUT_COMMAND="false"
+
+  bump Patch
+
+  [ "$status" -ne 0 ]
+  ! gh_called "pr create"
+}
+
+@test "a missing required input fails with its name" {
+  unset INPUT_COMMAND
+
+  bump Patch
+
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"INPUT_COMMAND"* ]]
+}
+
+@test "works without GITHUB_ACTOR, just without an assignee" {
+  unset GITHUB_ACTOR
+
+  bump Patch
+
+  [ "$status" -eq 0 ]
+  gh_called "pr create"
+  ! gh_called "--assignee"
+}
+
+@test "explains the repo setting when Actions may not create PRs" {
+  export GH_PR_CREATE_EXIT=1
+  export GH_PR_CREATE_STDERR="pull request create failed: GraphQL: GitHub Actions is not permitted to create or approve pull requests (createPullRequest)"
+
+  bump Patch
+
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"Allow GitHub Actions to create and approve pull requests"* ]]
+}
