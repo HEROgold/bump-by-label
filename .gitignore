@@ -49,6 +49,8 @@ eggs/
 .eggs/
 lib/
 lib64/
+# The action's own shell code, not Python build output.
+!/lib/
 parts/
 sdist/
 var/

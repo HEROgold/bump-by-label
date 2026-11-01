@@ -1,6 +1,6 @@
 # bump-by-label
 
-![](https://img.shields.io/badge/current_version-v3.0.0-blue)
+![](https://img.shields.io/badge/current_version-v4.1.0-blue)
 
 ## Overview
 
@@ -35,6 +35,8 @@ label logic and tags the merge commit `v<new>` (see [Tags](#tags)).
 | `moving-tags` | no | `false` | Also move `v<major>` and `v<major>.<minor>` to each release. |
 | `commit-user-name` | no | `github-actions[bot]` | Author and committer name of the bump commit. |
 | `commit-user-email` | no | `41898282+github-actions[bot]@users.noreply.github.com` | Author and committer email; this one links commits to the bot account. |
+| `checkout` | no | `false` | Check out the repository with full history and `github_token` first. Leave off when an earlier step checks out, because a second checkout cleans the workspace. |
+| `setup-uv` | no | `false` | Install uv first, for `uv version` commands. |
 
 Every run creates the bump labels the repo doesn't have yet. Existing labels
 are left alone, so colours and descriptions you changed stay.
@@ -190,23 +192,38 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v6
-
       - name: Bump by labels
         uses: herogold/bump-by-label@main
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          checkout: true
+          setup-uv: true
           command: "uv version --no-sync --bump"
           validate: "uv version --short"
 ```
 
+`checkout` and `setup-uv` replace the `actions/checkout` (with
+`fetch-depth: 0`) and `astral-sh/setup-uv` steps you would otherwise put
+before the action. Other ecosystems can still use `checkout: true` with a
+setup step such as `actions/setup-node` before the action, because those
+install outside the workspace. Files an earlier step writes into the
+workspace are removed by the checkout.
+
 ## Development
+
+`entrypoint.sh` only picks the path a run takes. The code for each path is in
+[`lib/`](lib), and a path's files are loaded only when the run takes it:
+
+| file | holds |
+|---|---|
+| `lib/inputs.sh` | reading and checking the `INPUT_*` variables |
+| `lib/outputs.sh` | the action outputs, written on every exit |
+| `lib/event.sh` | reading the event, recognising bump branches |
+| `lib/labels.sh` | creating labels, picking the bump type |
+| `lib/version.sh` | running `validate` and `command`, committing |
+| `lib/tag.sh` | release and moving tags (only with `create-tag`) |
+| `lib/push-mode.sh` | push mode (only with `mode: push`) |
+| `lib/pr-mode.sh` | the bump branch and PR (only with `mode: pr`) |
 
 Tests use [bats-core](https://github.com/bats-core/bats-core). They run
 `entrypoint.sh` against a temp repo whose `origin` is a local bare repo, with a

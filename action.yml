@@ -70,6 +70,14 @@ inputs:
     description: 'Git author and committer email for the bump commit.'
     required: false
     default: '41898282+github-actions[bot]@users.noreply.github.com'
+  checkout:
+    description: 'Check out the repository with full history and `github_token` before bumping. Leave it off when an earlier step already checks out: a second checkout cleans the workspace, removing what earlier steps installed there.'
+    required: false
+    default: 'false'
+  setup-uv:
+    description: 'Install uv before bumping, for `uv version` commands.'
+    required: false
+    default: 'false'
 
 outputs:
   version-bumped:
@@ -94,6 +102,20 @@ outputs:
 runs:
   using: 'composite'
   steps:
+    # The token is kept in the checkout's git config, so the bump branch and
+    # tags are pushed with it. A PAT or app token here makes those pushes
+    # start other workflows, which GITHUB_TOKEN pushes don't.
+    - name: Check out the repository
+      if: inputs.checkout == 'true'
+      uses: actions/checkout@v7
+      with:
+        fetch-depth: 0
+        token: ${{ inputs.github_token }}
+
+    - name: Install uv
+      if: inputs.setup-uv == 'true'
+      uses: astral-sh/setup-uv@v7
+
     - name: Run bump-by-label
       id: bump
       shell: bash
