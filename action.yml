@@ -27,10 +27,31 @@ inputs:
     required: false
     default: '41898282+github-actions[bot]@users.noreply.github.com'
 
+outputs:
+  version-bumped:
+    description: '`true` when a bump commit was made, else `false`.'
+    value: ${{ steps.bump.outputs.version-bumped }}
+  previous-version:
+    description: 'Version before the bump, from `validate`. Empty when it was not read.'
+    value: ${{ steps.bump.outputs.previous-version }}
+  new-version:
+    description: 'Version after the bump; empty when nothing was bumped.'
+    value: ${{ steps.bump.outputs.new-version }}
+  bump-type:
+    description: '`major`, `minor`, `patch` or `none`.'
+    value: ${{ steps.bump.outputs.bump-type }}
+  pr-number:
+    description: 'Number of the bump PR; empty when there is none.'
+    value: ${{ steps.bump.outputs.pr-number }}
+  tag:
+    description: 'Tag created for the release; empty if none.'
+    value: ${{ steps.bump.outputs.tag }}
+
 runs:
   using: 'composite'
   steps:
     - name: Run bump-by-label
+      id: bump
       shell: bash
       # Inputs go through env, not the command line, so their quotes reach
       # entrypoint.sh intact and can't break out of the run script.
