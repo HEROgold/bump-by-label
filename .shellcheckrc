@@ -1,0 +1,4 @@
+# entrypoint.sh sources lib/*.sh; follow those files and resolve them next
+# to the script that sources them.
+external-sources=true
+source-path=SCRIPTDIR
