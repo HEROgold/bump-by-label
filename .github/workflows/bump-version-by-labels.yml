@@ -27,7 +27,8 @@ jobs:
       - name: Bump by labels
         uses: ./
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          # The step above checked out the code that `./` runs.
+          checkout: false
           command: "semver-bump.sh VERSION '' {bump} && semver-bump.sh README.md 'current_version-v' {bump}"
           validate: "cat VERSION"
           create-tag: false

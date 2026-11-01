@@ -1,16 +1,17 @@
 name: 'bump-by-label'
 description: 'Bumps the version of a project based on the labels applied to a merged pull request.'
 inputs:
-  github_token:
-    description: 'GitHub token to authenticate with the GitHub API'
-    required: true
+  github-token:
+    description: 'Token for `gh` (labels, PRs) and, with `checkout`, for pushes. Pass a PAT or app token when the bump or tag pushes should start other workflows.'
+    required: false
+    default: ${{ github.token }}
   command:
     description: 'Command that bumps the version, run by bash. The bump type (major, minor or patch) replaces `{bump}`, or is appended when there is no `{bump}`. E.g. `uv version --no-sync --bump`. `semver-bump.sh` from this action is on PATH.'
     required: true
   validate:
     description: 'Command that prints the current version, run by bash. E.g. `uv version --short`. The first MAJOR.MINOR.PATCH in its output is used.'
     required: true
-  base_branch:
+  base-branch:
     description: 'The default branch to rebase and open the bump PR against.'
     required: false
     default: 'main'
@@ -71,9 +72,9 @@ inputs:
     required: false
     default: '41898282+github-actions[bot]@users.noreply.github.com'
   checkout:
-    description: 'Check out the repository with full history and `github_token` before bumping. Leave it off when an earlier step already checks out, because a second checkout cleans the workspace.'
+    description: 'Check out the repository with full history and `github-token` before bumping. Set it to `false` when an earlier step already checks out, because a second checkout cleans the workspace.'
     required: false
-    default: 'false'
+    default: 'true'
 
 outputs:
   version-bumped:
@@ -106,7 +107,7 @@ runs:
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         fetch-depth: 0
-        token: ${{ inputs.github_token }}
+        token: ${{ inputs.github-token }}
 
     - name: Run bump-by-label
       id: bump
@@ -114,10 +115,10 @@ runs:
       # Inputs go through env, not the command line, so their quotes reach
       # entrypoint.sh intact and can't break out of the run script.
       env:
-        GH_TOKEN: ${{ inputs.github_token }}
+        GH_TOKEN: ${{ inputs.github-token }}
         INPUT_COMMAND: ${{ inputs.command }}
         INPUT_VALIDATE: ${{ inputs.validate }}
-        INPUT_BASE_BRANCH: ${{ inputs.base_branch }}
+        INPUT_BASE_BRANCH: ${{ inputs.base-branch }}
         INPUT_MODE: ${{ inputs.mode }}
         INPUT_LABEL_MAJOR: ${{ inputs.label-major }}
         INPUT_LABEL_MINOR: ${{ inputs.label-minor }}

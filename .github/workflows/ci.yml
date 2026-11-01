@@ -177,7 +177,9 @@ jobs:
         env:
           BUMP_BY_LABEL_EVENT_PATH: ${{ runner.temp }}/event.json
         with:
-          github_token: unused
+          github-token: unused
+          # A checkout would replace the fixture project set up above.
+          checkout: false
           command: npm version --no-git-tag-version
           validate: node -p "require('./package.json').version"
 

@@ -21,10 +21,10 @@ label logic and tags the merge commit `v<new>` (see [Tags](#tags)).
 
 | input | required | default | description |
 |---|---|---|---|
-| `github_token` | yes | | Token for `gh` (labels, PRs). |
+| `github-token` | no | `${{ github.token }}` | Token for `gh` (labels, PRs) and, with `checkout`, for pushes. Pass a PAT or app token when the bump or tag pushes should start other workflows. |
 | `command` | yes | | Command that bumps the version, run by bash. The bump type (`major`, `minor` or `patch`) replaces `{bump}`, or is appended when there is no `{bump}`. |
 | `validate` | yes | | Command that prints the current version, run by bash. The first `MAJOR.MINOR.PATCH` in its output is used. |
-| `base_branch` | no | `main` | Branch the bump PR is opened against. |
+| `base-branch` | no | `main` | Branch the bump PR is opened against. |
 | `mode` | no | `pr` | `pr` opens a bump PR; `push` commits the bump on the base branch (see [Push mode](#push-mode)). |
 | `label-major` / `label-minor` / `label-patch` | no | `Major` / `Minor` / `Patch` | Bump labels. Whole names, ignoring case: `dispatch` is not `Patch`. Major beats minor beats patch. |
 | `label-major-color` / `label-minor-color` / `label-patch-color` | no | `d93f0b` / `0e8a16` / `0075ca` | Colours for bump labels the action creates. |
@@ -35,7 +35,7 @@ label logic and tags the merge commit `v<new>` (see [Tags](#tags)).
 | `moving-tags` | no | `false` | Also move `v<major>` and `v<major>.<minor>` to each release. |
 | `commit-user-name` | no | `github-actions[bot]` | Author and committer name of the bump commit. |
 | `commit-user-email` | no | `41898282+github-actions[bot]@users.noreply.github.com` | Author and committer email; this one links commits to the bot account. |
-| `checkout` | no | `false` | Check out the repository with full history and `github_token` first. Leave off when an earlier step checks out, because a second checkout cleans the workspace. |
+| `checkout` | no | `true` | Check out the repository with full history and `github-token` first. Set it to `false` when an earlier step checks out, because a second checkout cleans the workspace. |
 
 Every run creates the bump labels the repo doesn't have yet. Existing labels
 are left alone, so colours and descriptions you changed stay.
@@ -55,7 +55,7 @@ Every run writes all outputs, also when it bumps nothing.
 
 ```yml
       - id: bump
-        uses: herogold/bump-by-label@main
+        uses: herogold/bump-by-label@v5
         with: ...
       - if: steps.bump.outputs.version-bumped == 'true'
         run: echo "Bumped to ${{ steps.bump.outputs.new-version }} in #${{ steps.bump.outputs.pr-number }}"
@@ -185,13 +185,9 @@ jobs:
       contents: write
       pull-requests: write
     steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
       - uses: astral-sh/setup-uv@v7
-      - uses: herogold/bump-by-label@main
+      - uses: herogold/bump-by-label@v5
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
           command: "uv version --no-sync --bump"
           validate: "uv version --short"
 ```
@@ -231,18 +227,39 @@ jobs:
         uses: astral-sh/setup-uv@v7
 
       - name: Bump by labels
-        uses: herogold/bump-by-label@main
+        uses: herogold/bump-by-label@v5
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          checkout: true
           command: "uv version --no-sync --bump"
           validate: "uv version --short"
 ```
 
-`checkout: true` replaces an `actions/checkout` step with `fetch-depth: 0`
-before the action. Toolchain setup steps such as `astral-sh/setup-uv` can
-still come first, because they install outside the workspace. Files an
-earlier step writes into the workspace are removed by the checkout.
+The action checks out the repository itself, with `fetch-depth: 0`.
+Toolchain setup steps such as `astral-sh/setup-uv` can still come first,
+because they install outside the workspace. Files an earlier step writes into
+the workspace are removed by the checkout. Set `checkout: false` when the
+workflow checks out on its own.
+
+## Upgrading from v4
+
+v5 renames two inputs and checks out the repository by default.
+
+| v4 | v5 |
+|---|---|
+| `github_token` (required) | `github-token`, optional, defaults to `${{ github.token }}` |
+| `base_branch` | `base-branch` |
+| your own `actions/checkout` step with `fetch-depth: 0` | `checkout: true` (default) |
+
+To upgrade:
+
+1. Rename `base_branch` to `base-branch`.
+2. Drop `github_token: ${{ secrets.GITHUB_TOKEN }}`. Pass `github-token` only
+   for a PAT or app token.
+3. Remove the `actions/checkout` step before the action, or keep it and set
+   `checkout: false`. Keep it when an earlier step writes files the bump
+   needs into the workspace.
+
+Pin `@v5` to follow v5 releases, `@v5.0` for fixes only, or `@v5.0.0` for
+one release.
 
 ## Development
 
