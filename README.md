@@ -19,6 +19,8 @@ the change on a `bump-version-<new>` branch and opens a PR for it.
 | `command` | yes | | Command that bumps the version, run by bash. The bump type (`major`, `minor` or `patch`) replaces `{bump}`, or is appended when there is no `{bump}`. |
 | `validate` | yes | | Command that prints the current version, run by bash. The first `MAJOR.MINOR.PATCH` in its output is used. |
 | `base_branch` | no | `main` | Branch the bump PR is opened against. |
+| `commit-user-name` | no | `github-actions[bot]` | Author and committer name of the bump commit. |
+| `commit-user-email` | no | `41898282+github-actions[bot]@users.noreply.github.com` | Author and committer email; this one links commits to the bot account. |
 
 `command` and `validate` are run by bash, so quotes, pipes and `&&` work:
 `semver-bump.sh pom.xml '<artifactId>demo</artifactId>\s*<version>'`.

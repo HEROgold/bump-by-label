@@ -156,6 +156,25 @@ setup() {
   [[ "$output" == *"Allow GitHub Actions to create and approve pull requests"* ]]
 }
 
+@test "commits as github-actions[bot]" {
+  bump Patch
+
+  [ "$status" -eq 0 ]
+  author=$(git --git-dir="$ORIGIN" log -1 --format='%an <%ae>|%cn <%ce>' "$(bump_branch 1.2.3 1.2.4)")
+  [ "$author" = "github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>|github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>" ]
+}
+
+@test "the commit identity is configurable" {
+  export INPUT_COMMIT_USER_NAME="release-bot[bot]"
+  export INPUT_COMMIT_USER_EMAIL="123+release-bot[bot]@users.noreply.github.com"
+
+  bump Patch
+
+  [ "$status" -eq 0 ]
+  author=$(git --git-dir="$ORIGIN" log -1 --format='%an <%ae>' "$(bump_branch 1.2.3 1.2.4)")
+  [ "$author" = "release-bot[bot] <123+release-bot[bot]@users.noreply.github.com>" ]
+}
+
 @test "versions in validate's stderr are ignored" {
   export INPUT_VALIDATE="echo 'WARN: requires node >=18.0.0' >&2; cat VERSION"
 
