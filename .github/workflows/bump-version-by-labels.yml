@@ -1,0 +1,33 @@
+name: Bump Version By Labels
+
+# Called from ci.yml once all-checks passes on a push to main. The action
+# looks up the merged PR for the pushed commit and opens a bump PR from its
+# Major, Minor or Patch label. Merging the bump PR runs CI again, and that
+# run's release job publishes the new version.
+on:
+  workflow_call:
+
+permissions: {}
+
+jobs:
+  bump-version:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      # The action bumps this repo with the code being released, so a
+      # regression shows up here before anyone else runs it. release.yml
+      # creates the tags, so the action doesn't.
+      - name: Bump by labels
+        uses: ./
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          command: "semver-bump.sh VERSION '' {bump} && semver-bump.sh README.md 'current_version-v' {bump}"
+          validate: "cat VERSION"
+          create-tag: false

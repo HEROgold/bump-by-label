@@ -1,0 +1,50 @@
+name: Release
+
+# Called from ci.yml after the version bump, on pushes to main. A push that
+# merged a bump PR has an untagged version in VERSION, so this run tags the
+# pushed commit vX.Y.Z, creates the GitHub release and moves the vX and vX.Y
+# tags that callers pin.
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  new-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0  # all tags, to see whether this version has one
+
+      - name: Tag and release the version, if it is new
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          VERSION=$(cat VERSION)
+          TAG="v$VERSION"
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            echo "$TAG already exists; nothing to release."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "Release $TAG"
+          git push origin "refs/tags/$TAG"
+          gh release create "$TAG" --title "$TAG" --generate-notes --verify-tag
+
+          # Callers pin vX or vX.Y, so both follow each release. These are the
+          # only tags this workflow force-pushes.
+          MAJOR=${VERSION%%.*}
+          MINOR=${VERSION#*.}
+          MINOR=${MINOR%%.*}
+          for MOVING in "v$MAJOR" "v$MAJOR.$MINOR"; do
+            git tag -f -a "$MOVING" -m "Release $TAG"
+            git push -f origin "refs/tags/$MOVING"
+            echo "Moved $MOVING to $TAG."
+          done
