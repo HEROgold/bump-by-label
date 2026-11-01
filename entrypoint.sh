@@ -10,6 +10,10 @@ BRANCH_PREFIX=${INPUT_BRANCH_PREFIX-workflow}
 CREATE_TAG=${INPUT_CREATE_TAG:-true}
 TAG_PREFIX=${INPUT_TAG_PREFIX-v}
 MOVING_TAGS=${INPUT_MOVING_TAGS:-false}
+LABEL_MAJOR=${INPUT_LABEL_MAJOR:-Major}
+LABEL_MINOR=${INPUT_LABEL_MINOR:-Minor}
+LABEL_PATCH=${INPUT_LABEL_PATCH:-Patch}
+LABELS_TO_ADD=${INPUT_LABELS_TO_ADD:-}
 # 41898282 is the user id of github-actions[bot]; this noreply address is
 # what links commits to the bot account.
 COMMIT_USER_NAME=${INPUT_COMMIT_USER_NAME:-github-actions[bot]}
@@ -27,6 +31,19 @@ run_command() {
   else
     bash -c "$COMMAND \"\$1\"" bump-by-label "$BUMP_TYPE"
   fi
+}
+
+# ensure_label <name> <color> <description>: creates the label unless the
+# repo already has it (GitHub label names ignore case). Never --force: that
+# resets colours and descriptions the user changed.
+REPO_LABELS=""
+ensure_label() {
+  if grep -ixqF -- "$1" <<<"$REPO_LABELS"; then
+    return 0
+  fi
+  echo "Creating label '$1'."
+  gh label create "$1" --color "$2" --description "$3"
+  REPO_LABELS+=$'\n'"$1"
 }
 
 # Prints the first MAJOR.MINOR.PATCH that `validate` prints on stdout. Its
@@ -82,6 +99,11 @@ fi
 
 git config --local user.name "$COMMIT_USER_NAME"
 git config --local user.email "$COMMIT_USER_EMAIL"
+
+REPO_LABELS=$(gh label list --limit 1000 --json name --jq '.[].name')
+ensure_label "$LABEL_MAJOR" "${INPUT_LABEL_MAJOR_COLOR:-d93f0b}" "Bumps the major version (breaking changes)"
+ensure_label "$LABEL_MINOR" "${INPUT_LABEL_MINOR_COLOR:-0e8a16}" "Bumps the minor version (new features)"
+ensure_label "$LABEL_PATCH" "${INPUT_LABEL_PATCH_COLOR:-0075ca}" "Bumps the patch version (bug fixes)"
 
 # A merged bump PR (its head branch is a bump branch, see below) releases
 # the version it bumped to: tag the merge commit and skip the label logic.
@@ -153,31 +175,17 @@ fi
 
 LABELS=$(jq -r '.pull_request.labels[].name' "$EVENT_PATH" 2>/dev/null || echo "")
 
-# ensure there's labels on the repository.
-if [ -z "$LABELS" ]; then
-  echo "No labels found on the pull request. Creating 'Major', 'Minor', and 'Patch' labels."
-  
-  gh label create "Major" --description "Bumps the major version (breaking changes)" --color "d93f0b" --force
-  gh label create "Minor" --description "Bumps the minor version (new features)" --color "0e8a16" --force
-  gh label create "Patch" --description "Bumps the patch version (bug fixes)" --color "0075ca" --force
-  
-  echo "Labels 'Major', 'Minor' and 'Patch' created successfully."
-  echo "Add one of these labels to the PR and run the action again."
-  exit 0
-fi
-
-# Determine the bump type based on the labels. Here-strings, not
-# `echo | grep -q`: with pipefail, grep -q exiting early can fail the echo.
-if grep -iq "Major" <<<"$LABELS"; then
+# Whole label names only, ignoring case: a `dispatch` label is no patch.
+if grep -ixqF -- "$LABEL_MAJOR" <<<"$LABELS"; then
   BUMP_TYPE="major"
-elif grep -iq "Minor" <<<"$LABELS"; then
+elif grep -ixqF -- "$LABEL_MINOR" <<<"$LABELS"; then
   BUMP_TYPE="minor"
-elif grep -iq "Patch" <<<"$LABELS"; then
+elif grep -ixqF -- "$LABEL_PATCH" <<<"$LABELS"; then
   BUMP_TYPE="patch"
 fi
 
 if [ -z "$BUMP_TYPE" ]; then
-  echo "No 'Major', 'Minor' or 'Patch' label found. Version bump skipped."
+  echo "No '$LABEL_MAJOR', '$LABEL_MINOR' or '$LABEL_PATCH' label found. Version bump skipped."
   exit 0
 fi
 
@@ -235,6 +243,15 @@ PR_ARGS=(
 if [ -n "${GITHUB_ACTOR:-}" ]; then
   PR_ARGS+=(--assignee "$GITHUB_ACTOR")
 fi
+IFS=',' read -ra EXTRA_LABELS <<<"$LABELS_TO_ADD"
+for LABEL in "${EXTRA_LABELS[@]}"; do
+  LABEL="${LABEL#"${LABEL%%[![:space:]]*}"}"
+  LABEL="${LABEL%"${LABEL##*[![:space:]]}"}"
+  if [ -n "$LABEL" ]; then
+    ensure_label "$LABEL" "ededed" "Added to version bump PRs by bump-by-label"
+    PR_ARGS+=(--label "$LABEL")
+  fi
+done
 
 PR_STATUS=0
 PR_OUTPUT=$(gh pr create "${PR_ARGS[@]}" 2>&1) || PR_STATUS=$?

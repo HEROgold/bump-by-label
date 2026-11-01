@@ -132,7 +132,7 @@ remote_tag() {
     xworkflow/bump-version-from-1.2.3-to-1.2.4; do
     merge_bump_pr "$ref"
     [ "$status" -eq 0 ]
-    [[ "$output" == *"No labels found"* ]]
+    [[ "$output" == *"Version bump skipped"* ]]
   done
   [ -z "$(git --git-dir="$ORIGIN" tag)" ]
 }
