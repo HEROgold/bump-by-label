@@ -59,7 +59,7 @@ publish_pr() {
       echo "Error: GitHub Actions may not open PRs in this repository. Turn on" \
         "Settings > Actions > General > Workflow permissions >" \
         "\"Allow GitHub Actions to create and approve pull requests\"," \
-        "or pass a PAT or app token as github_token." >&2
+        "or pass a PAT or app token as github-token." >&2
     else
       echo "Error: gh pr create failed (exit $pr_status)." >&2
     fi
