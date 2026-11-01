@@ -271,3 +271,18 @@ bats tests/ecosystems/rust.bats      # one ecosystem; skips if its tools are mis
 
 CI runs each ecosystem in its own job with its toolchain installed
 (`REQUIRE_TOOLCHAIN=1` turns a missing tool into a failure).
+
+### Releasing
+
+This repo releases itself with its own action. The version is in `VERSION`.
+
+1. Merge a PR labelled `Major`, `Minor` or `Patch`. After CI passes on
+   `main`, the `bump` job runs this repo's action (`uses: ./`) and opens a
+   bump PR that changes `VERSION` and the badge above.
+2. Merge the bump PR. CI runs again, and the `release` job
+   ([`release.yml`](.github/workflows/release.yml)) tags the commit
+   `vX.Y.Z`, creates the GitHub release with generated notes, and moves the
+   `vX` and `vX.Y` tags to it.
+
+A bump PR opened with `GITHUB_TOKEN` gets no CI run of its own. Its checks
+run after it merges, before the release job.

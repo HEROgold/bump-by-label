@@ -1,9 +1,21 @@
-name: Test
+name: CI
 
+# One entry point for every check. On pushes to main the chain continues once
+# all-checks passes: bump opens a version bump PR for a labelled PR, then
+# release tags and releases any version in VERSION that has no tag yet.
+# Merging the bump PR runs CI again, and that run's release job publishes it.
 on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+
+# A newer push to a PR cancels its older run. Pushes to main each get their
+# own group, because GitHub keeps only one pending run per group and would
+# drop a merge's run, along with its version bump.
+concurrency:
+  group: ${{ github.event_name == 'push' && github.run_id || format('ci-{0}', github.ref) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -12,14 +24,14 @@ jobs:
   shellcheck:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: git ls-files -z '*.sh' '*.bash' | xargs -0 shellcheck
 
   unit:
     name: unit tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install bats
         run: |
           git clone -q --depth 1 --branch v1.13.0 https://github.com/bats-core/bats-core "$RUNNER_TEMP/bats-core"
@@ -54,14 +66,14 @@ jobs:
       # A missing tool fails the job instead of skipping the tests.
       REQUIRE_TOOLCHAIN: "1"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install bats
         run: |
           git clone -q --depth 1 --branch v1.13.0 https://github.com/bats-core/bats-core "$RUNNER_TEMP/bats-core"
           sudo "$RUNNER_TEMP/bats-core/install.sh" /usr/local
 
       - if: startsWith(matrix.suite, 'python-') || matrix.suite == 'meson'
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
       - if: matrix.suite == 'python-poetry'
         run: uv tool install poetry
       - if: matrix.suite == 'python-hatch'
@@ -70,56 +82,56 @@ jobs:
         run: uv tool install meson
 
       - if: matrix.suite == 'javascript' || matrix.suite == 'typescript'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: lts/*
 
       - if: startsWith(matrix.suite, 'rust')
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
       - if: startsWith(matrix.suite, 'rust')
-        uses: taiki-e/install-action@v2
+        uses: taiki-e/install-action@68a389c788b2cd04016ce8c80ee23b80d2ab3d68 # v2.88.1
         with:
           tool: cargo-edit
 
       - if: matrix.suite == 'go'
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version: stable
 
       - if: matrix.suite == 'csharp'
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
           dotnet-version: 8.0.x
 
       - if: matrix.suite == 'php'
-        uses: shivammathur/setup-php@v2
+        uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
         with:
           php-version: "8.3"
           tools: composer
 
       - if: matrix.suite == 'ruby'
-        uses: ruby/setup-ruby@v1
+        uses: ruby/setup-ruby@de492cf36cbab201753d720ce4f4e336cd688c94 # v1.336.0
         with:
           ruby-version: "3.3"
 
       - if: matrix.suite == 'maven' || matrix.suite == 'gradle'
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
         with:
           distribution: temurin
           java-version: "21"
       - if: matrix.suite == 'gradle'
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@748248ddd2a24f49513d8f472f81c3a07d4d50e1 # v4.4.4
         with:
           gradle-version: "8.14"
 
       - if: matrix.suite == 'elixir'
-        uses: erlef/setup-beam@v1
+        uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
         with:
           otp-version: "27"
           elixir-version: "1.17"
 
       - if: matrix.suite == 'dart'
-        uses: dart-lang/setup-dart@v1
+        uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
 
       - run: bats tests/ecosystems/${{ matrix.suite }}.bats
 
@@ -127,7 +139,7 @@ jobs:
     name: end-to-end (uses ./)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: action
 
@@ -180,3 +192,31 @@ jobs:
           test "${{ steps.bump.outputs.new-version }}" = "1.3.0"
           test "${{ steps.bump.outputs.bump-type }}" = "minor"
           test "${{ steps.bump.outputs.pr-number }}" = "7"
+
+  # Passes when every check passed. Require this job only in the ruleset, not
+  # the checks it needs.
+  all-checks:
+    if: always()
+    needs: [shellcheck, unit, ecosystems, e2e]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail if a check failed or was cancelled
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1
+
+  # always() is needed even though all-checks passed. Without it, GitHub's
+  # implicit success() also looks at the checks all-checks needs.
+  bump:
+    needs: all-checks
+    if: always() && github.event_name == 'push' && needs.all-checks.result == 'success'
+    uses: ./.github/workflows/bump-version-by-labels.yml
+    permissions:
+      contents: write
+      pull-requests: write
+
+  release:
+    needs: bump
+    if: always() && needs.bump.result == 'success'
+    uses: ./.github/workflows/release.yml
+    permissions:
+      contents: write
