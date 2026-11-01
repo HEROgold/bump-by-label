@@ -87,6 +87,7 @@ pr_event() {
 bump() {
   pr_event "$@"
   run bash "$ENTRYPOINT"
+  # shellcheck disable=SC2154 # `run` sets $output
   echo "$output"
 }
 

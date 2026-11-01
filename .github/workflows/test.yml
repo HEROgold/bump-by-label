@@ -9,6 +9,12 @@ permissions:
   contents: read
 
 jobs:
+  shellcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: git ls-files -z '*.sh' '*.bash' | xargs -0 shellcheck
+
   unit:
     name: unit tests
     runs-on: ubuntu-latest
