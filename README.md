@@ -36,7 +36,6 @@ label logic and tags the merge commit `v<new>` (see [Tags](#tags)).
 | `commit-user-name` | no | `github-actions[bot]` | Author and committer name of the bump commit. |
 | `commit-user-email` | no | `41898282+github-actions[bot]@users.noreply.github.com` | Author and committer email; this one links commits to the bot account. |
 | `checkout` | no | `false` | Check out the repository with full history and `github_token` first. Leave off when an earlier step checks out, because a second checkout cleans the workspace. |
-| `setup-uv` | no | `false` | Install uv first, for `uv version` commands. |
 
 Every run creates the bump labels the repo doesn't have yet. Existing labels
 are left alone, so colours and descriptions you changed stay.
@@ -192,22 +191,22 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
       - name: Bump by labels
         uses: herogold/bump-by-label@main
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           checkout: true
-          setup-uv: true
           command: "uv version --no-sync --bump"
           validate: "uv version --short"
 ```
 
-`checkout` and `setup-uv` replace the `actions/checkout` (with
-`fetch-depth: 0`) and `astral-sh/setup-uv` steps you would otherwise put
-before the action. Other ecosystems can still use `checkout: true` with a
-setup step such as `actions/setup-node` before the action, because those
-install outside the workspace. Files an earlier step writes into the
-workspace are removed by the checkout.
+`checkout: true` replaces an `actions/checkout` step with `fetch-depth: 0`
+before the action. Toolchain setup steps such as `astral-sh/setup-uv` can
+still come first, because they install outside the workspace. Files an
+earlier step writes into the workspace are removed by the checkout.
 
 ## Development
 

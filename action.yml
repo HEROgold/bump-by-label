@@ -71,11 +71,7 @@ inputs:
     required: false
     default: '41898282+github-actions[bot]@users.noreply.github.com'
   checkout:
-    description: 'Check out the repository with full history and `github_token` before bumping. Leave it off when an earlier step already checks out: a second checkout cleans the workspace, removing what earlier steps installed there.'
-    required: false
-    default: 'false'
-  setup-uv:
-    description: 'Install uv before bumping, for `uv version` commands.'
+    description: 'Check out the repository with full history and `github_token` before bumping. Leave it off when an earlier step already checks out, because a second checkout cleans the workspace.'
     required: false
     default: 'false'
 
@@ -107,14 +103,10 @@ runs:
     # start other workflows, which GITHUB_TOKEN pushes don't.
     - name: Check out the repository
       if: inputs.checkout == 'true'
-      uses: actions/checkout@v7
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         fetch-depth: 0
         token: ${{ inputs.github_token }}
-
-    - name: Install uv
-      if: inputs.setup-uv == 'true'
-      uses: astral-sh/setup-uv@v7
 
     - name: Run bump-by-label
       id: bump
