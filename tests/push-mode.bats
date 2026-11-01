@@ -7,6 +7,27 @@ setup() {
   export INPUT_MODE=push
   OTHER="$BATS_TEST_TMPDIR/other"
   git clone -q "$ORIGIN" "$OTHER"
+  # push-from-other <file> <content> <message> [every]: commits in the other
+  # clone and pushes to main, as if someone merged while the action runs. Put
+  # it in INPUT_COMMAND. It pushes on the first call only, since push mode
+  # reruns the command on each attempt; with `every` it pushes every call.
+  cat > "$BATS_TEST_TMPDIR/bin/push-from-other" <<EOF
+#!/usr/bin/env bash
+set -e
+if [ "\${4:-}" != every ]; then
+  [ ! -e "$BATS_TEST_TMPDIR/pushed-from-other" ] || exit 0
+  touch "$BATS_TEST_TMPDIR/pushed-from-other"
+fi
+if [ "\${4:-}" = every ]; then
+  echo "\$2 \$RANDOM" > "$OTHER/\$1"
+else
+  echo "\$2" > "$OTHER/\$1"
+fi
+git -C "$OTHER" add -A
+git -C "$OTHER" -c user.name=other -c user.email=other@example.com commit -q -m "\$3"
+git -C "$OTHER" push -q origin main
+EOF
+  chmod +x "$BATS_TEST_TMPDIR/bin/push-from-other"
 }
 
 # Commits <file>=<content> in another clone and pushes it to main, as if
@@ -52,8 +73,8 @@ other_push() {
   [ "$(remote_file main VERSION)" = "1.2.4" ]
 }
 
-@test "push mode rebases and retries when the base moved during the run" {
-  export INPUT_COMMAND="semver-bump.sh VERSION '' {bump} && OTHER=$OTHER bash -c 'echo moved > \$OTHER/NOTES && git -C \$OTHER add -A && git -C \$OTHER -c user.name=o -c user.email=o@e commit -qm moved && git -C \$OTHER push -q origin main'"
+@test "push mode redoes the bump when the base moved during the run" {
+  export INPUT_COMMAND="semver-bump.sh VERSION '' {bump} && push-from-other NOTES moved moved"
 
   bump Patch
 
@@ -64,20 +85,30 @@ other_push() {
   [ "$(git --git-dir="$ORIGIN" rev-parse 'v1.2.4^{commit}')" = "$(git --git-dir="$ORIGIN" rev-parse main)" ]
 }
 
-@test "push mode fails clearly on a rebase conflict and never forces" {
-  export INPUT_COMMAND="semver-bump.sh VERSION '' {bump} && OTHER=$OTHER bash -c 'echo 9.9.9 > \$OTHER/VERSION && git -C \$OTHER -c user.name=o -c user.email=o@e commit -qam conflict && git -C \$OTHER push -q origin main'"
+@test "push mode bumps again when another run pushed the same bump" {
+  export INPUT_COMMAND="semver-bump.sh VERSION '' {bump} && push-from-other VERSION 1.2.4 'Bump version from 1.2.3 to 1.2.4'"
 
   bump Patch
 
-  [ "$status" -ne 0 ]
-  [[ "$output" == *"conflicts with"* ]]
-  [ "$(remote_file main VERSION)" = "9.9.9" ]
-  [ ! -d .git/rebase-merge ] && [ ! -d .git/rebase-apply ]
-  [ -z "$(git --git-dir="$ORIGIN" tag)" ]
-  assert_outputs version-bumped=false
+  [ "$status" -eq 0 ]
+  [ "$(remote_file main VERSION)" = "1.2.5" ]
+  [ "$(git --git-dir="$ORIGIN" log -1 --format=%s main)" = "Bump version from 1.2.4 to 1.2.5" ]
+  [ "$(git --git-dir="$ORIGIN" log -1 --format=%s main~1)" = "Bump version from 1.2.3 to 1.2.4" ]
+  assert_outputs version-bumped=true previous-version=1.2.4 new-version=1.2.5 tag=v1.2.5
 }
 
-@test "push mode gives up after 3 rejected pushes" {
+@test "push mode bumps from a version pushed during the run" {
+  export INPUT_COMMAND="semver-bump.sh VERSION '' {bump} && push-from-other VERSION 9.9.9 'manual 9.9.9'"
+
+  bump Patch
+
+  [ "$status" -eq 0 ]
+  [ "$(remote_file main VERSION)" = "9.9.10" ]
+  [ "$(git --git-dir="$ORIGIN" log -1 --format=%s main~1)" = "manual 9.9.9" ]
+  assert_outputs previous-version=9.9.9 new-version=9.9.10 tag=v9.9.10
+}
+
+@test "push mode fails at once when the push is refused and the base didn't move" {
   cat > "$ORIGIN/hooks/pre-receive" <<'HOOK'
 #!/bin/sh
 echo attempt >> "$(dirname "$0")/attempts"
@@ -89,8 +120,44 @@ HOOK
   bump Patch
 
   [ "$status" -ne 0 ]
-  [ "$(wc -l < "$ORIGIN/hooks/attempts")" -eq 3 ]
+  [ "$(wc -l < "$ORIGIN/hooks/attempts")" -eq 1 ]
+  [[ "$output" == *"hasn't moved"* ]]
+  assert_outputs version-bumped=false tag=
+}
+
+@test "push mode gives up after 3 attempts when the base keeps moving" {
+  export INPUT_COMMAND="semver-bump.sh VERSION '' {bump} && push-from-other NOTES moved moved every"
+
+  bump Patch
+
+  [ "$status" -ne 0 ]
   [[ "$output" == *"after 3 attempts"* ]]
+  [ "$(remote_file main VERSION)" = "1.2.3" ]
+  [ -z "$(git --git-dir="$ORIGIN" tag)" ]
+}
+
+@test "push mode refuses to commit changes left by earlier steps" {
+  echo stray > STRAY
+
+  bump Patch
+
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"uncommitted changes"* ]]
+  [ "$(remote_file main VERSION)" = "1.2.3" ]
+}
+
+@test "a labelled PR closed without merging bumps nothing" {
+  pr_event Patch
+  jq '.pull_request.merged = false' "$GITHUB_EVENT_PATH" > "$BATS_TEST_TMPDIR/e.json"
+  mv "$BATS_TEST_TMPDIR/e.json" "$GITHUB_EVENT_PATH"
+
+  run bash "$ENTRYPOINT"
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"not merged"* ]]
+  [ "$(remote_file main VERSION)" = "1.2.3" ]
+  [ -z "$(git --git-dir="$ORIGIN" tag)" ]
+  assert_outputs version-bumped=false
 }
 
 @test "an unknown mode fails" {

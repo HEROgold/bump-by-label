@@ -83,35 +83,73 @@ tag_release() {
   fi
 }
 
-# push_base_branch: pushes the bump commit to the base branch. When the push
-# is rejected because the base moved, rebases onto it and retries, up to 3
-# attempts. Never forces: a rebase conflict aborts and fails the run.
-push_base_branch() {
-  local attempt
+# commit_bump: commits everything the command changed as "$TITLE".
+commit_bump() {
+  git add -A
+  git commit -m "$TITLE"
+}
+
+# bump_version: reads the version, runs `command` and reads it again. Sets
+# OLD_VERSION, NEW_VERSION and TITLE. Call it as a plain statement, never in
+# an `if` or `||`: there set -e is off and a failing validate wouldn't stop.
+bump_version() {
+  echo "Validating the current version..."
+  OLD_VERSION=$(read_version)
+  PREVIOUS_VERSION=$OLD_VERSION
+  echo "Current version: $OLD_VERSION"
+  echo "Running command: $COMMAND"
+  echo "Found bump-type: $BUMP_TYPE"
+  run_command
+  echo "Validating the new version..."
+  NEW_VERSION=$(read_version)
+  echo "New version validated: $NEW_VERSION"
+  TITLE="Bump version from ${OLD_VERSION} to ${NEW_VERSION}"
+}
+
+# stop_if_unchanged: ends the run when `command` didn't change the version.
+stop_if_unchanged() {
+  if [ "$NEW_VERSION" = "$OLD_VERSION" ]; then
+    echo "No version bump required."
+    exit 0
+  fi
+}
+
+# publish_push: bumps on the tip of the base branch, commits and pushes.
+# When the push is rejected because the base moved, it redoes the bump from
+# the new tip instead of rebasing, so a version another run pushed meanwhile
+# is bumped again. Up to 3 attempts. A rejection while the base didn't move
+# (branch protection, permissions) fails at once. Never forces.
+publish_push() {
+  local attempt tip
+  if [ -n "$(git status --porcelain)" ]; then
+    echo "Error: the working tree has uncommitted changes from earlier steps;" \
+      "push mode would commit them to $BASE_BRANCH:" >&2
+    git status --short >&2
+    exit 1
+  fi
   for attempt in 1 2 3; do
+    git fetch -q origin "$BASE_BRANCH"
+    tip=$(git rev-parse "origin/$BASE_BRANCH")
+    git checkout -q -B "$BASE_BRANCH" "$tip"
+    bump_version
+    stop_if_unchanged
+    commit_bump
     if git push origin "HEAD:refs/heads/$BASE_BRANCH"; then
+      VERSION_BUMPED=true
+      BUMPED_VERSION=$NEW_VERSION
+      echo "Pushed $TITLE to $BASE_BRANCH."
       return 0
     fi
-    if [ "$attempt" -eq 3 ]; then
-      break
+    git fetch -q origin "$BASE_BRANCH"
+    if [ "$(git rev-parse "origin/$BASE_BRANCH")" = "$tip" ]; then
+      echo "Error: the push to $BASE_BRANCH was refused and $BASE_BRANCH hasn't moved." \
+        "Branch protection must let this token push (GITHUB_TOKEN can't bypass required reviews)." >&2
+      exit 1
     fi
-    echo "Push to $BASE_BRANCH rejected (attempt $attempt); rebasing onto the latest $BASE_BRANCH."
-    if ! git pull --rebase origin "$BASE_BRANCH"; then
-      # A stopped rebase means a conflict; anything else (network, auth)
-      # failed before rebasing.
-      if git rev-parse -q --verify REBASE_HEAD >/dev/null; then
-        git rebase --abort
-        echo "Error: the version bump conflicts with new commits on $BASE_BRANCH." \
-          "Nothing was pushed; rerun the workflow to bump from the latest $BASE_BRANCH." >&2
-      else
-        echo "Error: git pull --rebase origin $BASE_BRANCH failed. Nothing was pushed." >&2
-      fi
-      return 1
-    fi
+    echo "$BASE_BRANCH moved during attempt $attempt; redoing the bump from its new tip."
   done
-  echo "Error: could not push to $BASE_BRANCH after 3 attempts." \
-    "Branch protection must let this token push (GITHUB_TOKEN can't bypass required reviews)." >&2
-  return 1
+  echo "Error: $BASE_BRANCH kept moving; gave up after 3 attempts. Nothing was pushed." >&2
+  exit 1
 }
 
 # Prints the first MAJOR.MINOR.PATCH that `validate` prints on stdout. Its
@@ -165,6 +203,13 @@ if [ -z "$EVENT_PATH" ]; then
   exit 1
 fi
 
+# Only a merged PR bumps or releases. An open or closed-unmerged PR also has
+# a merge_commit_sha (a test merge), which must never be tagged.
+if [ "$(jq -r '.pull_request.merged // false' "$EVENT_PATH")" != true ]; then
+  echo "PR #$(jq -r '.pull_request.number // "?"' "$EVENT_PATH") is not merged; nothing to bump or tag."
+  exit 0
+fi
+
 git config --local user.name "$COMMIT_USER_NAME"
 git config --local user.email "$COMMIT_USER_EMAIL"
 
@@ -183,12 +228,6 @@ fi
 SEMVER_RE='([0-9]+)\.([0-9]+)\.([0-9]+)'
 if [[ $HEAD_REF == "$BUMP_BRANCH_START"* ]] &&
   [[ ${HEAD_REF#"$BUMP_BRANCH_START"} =~ ^${SEMVER_RE}-to-${SEMVER_RE}$ ]]; then
-  # An open or closed-unmerged PR also has a merge_commit_sha (a test merge),
-  # which must never be tagged as a release.
-  if [ "$(jq -r '.pull_request.merged // false' "$EVENT_PATH")" != true ]; then
-    echo "Bump PR from $HEAD_REF is not merged; nothing to tag."
-    exit 0
-  fi
   OLD=("${BASH_REMATCH[@]:1:3}")
   NEW=("${BASH_REMATCH[@]:4:3}")
   PREVIOUS_VERSION="${OLD[0]}.${OLD[1]}.${OLD[2]}"
@@ -238,29 +277,16 @@ if [ -z "$BUMP_TYPE" ]; then
 fi
 
 if [ "$MODE" = push ]; then
-  # Push mode works on the base branch itself: plain pull and push only.
-  git checkout "$BASE_BRANCH"
-  git pull --ff-only origin "$BASE_BRANCH"
-fi
-
-echo "Validating the current version..."
-OLD_VERSION=$(read_version)
-PREVIOUS_VERSION=$OLD_VERSION
-echo "Current version: $OLD_VERSION"
-
-echo "Running command: $COMMAND"
-echo "Found bump-type: $BUMP_TYPE"
-
-run_command
-
-echo "Validating the new version..."
-NEW_VERSION=$(read_version)
-echo "New version validated: $NEW_VERSION"
-
-if [ "$NEW_VERSION" = "$OLD_VERSION" ]; then
-  echo "No version bump required."
+  publish_push
+  # No bump PR will merge later, so tag the pushed commit now.
+  if [ "$CREATE_TAG" = true ]; then
+    tag_release "$(git rev-parse HEAD)"
+  fi
   exit 0
 fi
+
+bump_version
+stop_if_unchanged
 
 # Old and new version are both in the name, so rerunning the same bump
 # force-pushes the same branch and a different bump gets its own. The tag
@@ -269,29 +295,13 @@ BRANCH_NAME="bump-version-from-${OLD_VERSION}-to-${NEW_VERSION}"
 if [ -n "$BRANCH_PREFIX" ]; then
   BRANCH_NAME="${BRANCH_PREFIX}/${BRANCH_NAME}"
 fi
-TITLE="Bump version from ${OLD_VERSION} to ${NEW_VERSION}"
-
-if [ "$MODE" = push ]; then
-  git add -A
-  git commit -m "$TITLE"
-  push_base_branch
-  VERSION_BUMPED=true
-  BUMPED_VERSION=$NEW_VERSION
-  echo "Pushed $TITLE to $BASE_BRANCH."
-  # No bump PR will merge later, so tag the pushed commit now.
-  if [ "$CREATE_TAG" = true ]; then
-    tag_release "$(git rev-parse HEAD)"
-  fi
-  exit 0
-fi
 
 # Always rebuild the branch from the current default branch tip rather than
 # reusing whatever the existing local/remote branch points at: the bump
 # branch is disposable and regenerated on every run, so a --force push is the
 # correct (and only reliable) way to publish it.
 git checkout -B "$BRANCH_NAME" "origin/${BASE_BRANCH}"
-git add -A
-git commit -m "$TITLE"
+commit_bump
 git push --force origin "$BRANCH_NAME"
 VERSION_BUMPED=true
 BUMPED_VERSION=$NEW_VERSION

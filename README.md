@@ -134,17 +134,25 @@ recognised and skipped. GitHub Releases are not created.
 
 ## Push mode
 
-With `mode: push` there is no bump PR. The action checks out the base branch,
-`git pull --ff-only`, bumps, commits and `git push`es. If the push is rejected
-because the base moved, it runs `git pull --rebase` and retries, up to 3
-attempts. A rebase conflict aborts the rebase and fails the run. It never uses
-`--force`, `--force-with-lease` or `reset --hard` on the base branch.
+With `mode: push` there is no bump PR. The action fetches the base branch,
+checks out its tip, bumps, commits and `git push`es. If the push is rejected
+because the base moved, it runs `validate`, `command` and `validate` again on
+the new tip, up to 3 attempts. Two runs that bump at the same time therefore
+make two bumps. If the push is rejected while the base hasn't moved (branch
+protection, permissions), the run fails at once. It never uses `--force`,
+`--force-with-lease` or `reset --hard` on the base branch.
+
+Push mode fails if the working tree already has changes, such as files from
+earlier steps that aren't in `.gitignore`, because it would commit them
+straight to the base branch.
 
 With `create-tag` on, the pushed commit is tagged right away, since no bump PR
 will merge later. `pr-number` is empty.
 
-- The pushed commit doesn't trigger another bump: there is no PR, and the
-  workflow runs on `pull_request: closed`.
+- The pushed commit doesn't trigger another bump while the workflow runs
+  only on `pull_request: closed`. With a `push` trigger and an app token or
+  PAT, the bump commit starts a new run; skip it with a `github.actor` or
+  commit-message check.
 - Branch protection must let the token push. `GITHUB_TOKEN` can't bypass
   required reviews, so use an app token, a PAT or a ruleset bypass.
 - Pushes made with `GITHUB_TOKEN` don't trigger other workflows.
