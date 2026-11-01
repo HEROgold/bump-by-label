@@ -93,7 +93,7 @@ bump() {
 
 # bump_branch <old> <new>: the name of the branch a bump from old to new uses.
 bump_branch() {
-  echo "bump-version-$2"
+  echo "${INPUT_BRANCH_PREFIX:-workflow}/bump-version-from-$1-to-$2"
 }
 
 # assert_bumped <old> <new> <file...>: the bump branch on origin has <new>

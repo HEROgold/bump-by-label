@@ -6,6 +6,7 @@ set -euo pipefail
 COMMAND=${INPUT_COMMAND:?INPUT_COMMAND (the command input) is required}
 VALIDATE=${INPUT_VALIDATE:?INPUT_VALIDATE (the validate input) is required}
 BASE_BRANCH=${INPUT_BASE_BRANCH:-main}
+BRANCH_PREFIX=${INPUT_BRANCH_PREFIX-workflow}
 # 41898282 is the user id of github-actions[bot]; this noreply address is
 # what links commits to the bot account.
 COMMIT_USER_NAME=${INPUT_COMMIT_USER_NAME:-github-actions[bot]}
@@ -86,20 +87,9 @@ if [ -z "$BUMP_TYPE" ]; then
   exit 0
 fi
 
-BRANCH_NAME="bump-version-${BUMP_TYPE}"
-
-# Look for an already-pushed bump branch on the remote, not just locally: a
-# fresh checkout has no other local branches, so a local-only check here
-# never sees a branch left behind by a previous run and silently diverges
-# from it, causing a non-fast-forward push rejection later.
-git fetch origin 'refs/heads/bump-version-*:refs/remotes/origin/bump-version-*' 2>/dev/null || true
-EXISTING_BRANCH=$(git for-each-ref --format='%(refname:short)' refs/remotes/origin/bump-version-* | sed 's#^origin/##' | head -n 1)
-
-if [ -n "$EXISTING_BRANCH" ]; then
-  echo "A bump-version-* branch already exists: $EXISTING_BRANCH"
-  echo "Checking out existing branch."
-  BRANCH_NAME="$EXISTING_BRANCH"
-fi
+echo "Validating the current version..."
+OLD_VERSION=$(read_version)
+echo "Current version: $OLD_VERSION"
 
 echo "Running command: $COMMAND"
 echo "Found bump-type: $BUMP_TYPE"
@@ -109,7 +99,20 @@ run_command
 echo "Validating the new version..."
 NEW_VERSION=$(read_version)
 echo "New version validated: $NEW_VERSION"
-BRANCH_NAME="bump-version-${NEW_VERSION}"
+
+if [ "$NEW_VERSION" = "$OLD_VERSION" ]; then
+  echo "No version bump required."
+  exit 0
+fi
+
+# Old and new version are both in the name, so rerunning the same bump
+# force-pushes the same branch and a different bump gets its own. The tag
+# step recognises merged bump PRs by this name.
+BRANCH_NAME="bump-version-from-${OLD_VERSION}-to-${NEW_VERSION}"
+if [ -n "$BRANCH_PREFIX" ]; then
+  BRANCH_NAME="${BRANCH_PREFIX}/${BRANCH_NAME}"
+fi
+TITLE="Bump version from ${OLD_VERSION} to ${NEW_VERSION}"
 
 git config --local user.name "$COMMIT_USER_NAME"
 git config --local user.email "$COMMIT_USER_EMAIL"
@@ -120,7 +123,7 @@ git config --local user.email "$COMMIT_USER_EMAIL"
 # correct (and only reliable) way to publish it.
 git checkout -B "$BRANCH_NAME" "origin/${BASE_BRANCH}"
 git add -A
-git commit -m "chore: bump version to ${NEW_VERSION}"
+git commit -m "$TITLE"
 git push --force origin "$BRANCH_NAME"
 
 if gh pr view "$BRANCH_NAME" >/dev/null 2>&1; then
@@ -129,8 +132,8 @@ if gh pr view "$BRANCH_NAME" >/dev/null 2>&1; then
 fi
 
 PR_ARGS=(
-  --title "chore: bump version to ${NEW_VERSION}"
-  --body "Automated version bump to ${NEW_VERSION}"
+  --title "$TITLE"
+  --body "Automated version bump from ${OLD_VERSION} to ${NEW_VERSION}."
   --base "$BASE_BRANCH"
   --head "$BRANCH_NAME"
 )
