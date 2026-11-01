@@ -33,6 +33,7 @@ setup_repo() {
 
   stub_gh
   export GITHUB_ACTOR="octocat"
+  export GITHUB_REPOSITORY="owner/repo"
   export GITHUB_OUTPUT="$BATS_TEST_TMPDIR/github_output"
   export GITHUB_EVENT_PATH="$BATS_TEST_TMPDIR/event.json"
   : > "$GITHUB_OUTPUT"
@@ -48,6 +49,8 @@ setup_repo() {
 #   GH_LABELS        output of `gh label list` (newline-separated names)
 #   GH_PR_CREATE_EXIT    make `gh pr create` fail with this status
 #   GH_PR_CREATE_STDERR  what `gh pr create` prints on stderr
+#   GH_COMMIT_PULLS  output of `gh api repos/.../commits/<sha>/pulls` (default [])
+#   GH_API_EXIT      make `gh api` fail with this status
 stub_gh() {
   GH_LOG="$BATS_TEST_TMPDIR/gh.log"
   : > "$GH_LOG"
@@ -71,6 +74,12 @@ case "$1 $2" in
       echo "$GH_PR_CREATE_STDERR" >&2
     fi ;;
   "label list") printf '%s\n' "${GH_LABELS:-}" | sed '/^$/d' ;;
+  "api repos/"*/commits/*/pulls)
+    if [ "${GH_API_EXIT:-0}" -ne 0 ]; then
+      echo "gh: Not Found (HTTP 404)" >&2
+      exit "$GH_API_EXIT"
+    fi
+    printf '%s\n' "${GH_COMMIT_PULLS:-[]}" ;;
 esac
 STUB
   chmod +x "$BATS_TEST_TMPDIR/bin/gh"
@@ -86,6 +95,32 @@ pr_event() {
     '{pull_request: {number: 42, merged: true, head: {ref: $head}, base: {ref: "main"},
       merge_commit_sha: $sha, labels: ($ARGS.positional | map({name: .}))}}' \
     --args "$@" > "$GITHUB_EVENT_PATH"
+}
+
+# push_event [sha]: writes a push event for <sha> (default HEAD). Pass an
+# empty sha for an event without `.after`, such as workflow_dispatch.
+push_event() {
+  local sha=${1-$(git rev-parse HEAD)}
+  jq -n --arg sha "$sha" \
+    '{ref: "refs/heads/main"} + (if $sha == "" then {} else {after: $sha} end)' \
+    > "$GITHUB_EVENT_PATH"
+}
+
+# commit_pull <merged> [label...]: sets GH_COMMIT_PULLS to one PR as the
+# commits/<sha>/pulls endpoint lists it. <merged> is true or false. PR_HEAD_REF
+# and MERGE_SHA override the head branch and merge commit.
+commit_pull() {
+  local merged=$1
+  shift
+  GH_COMMIT_PULLS=$(jq -nc \
+    --arg head "${PR_HEAD_REF:-feature}" \
+    --arg sha "${MERGE_SHA:-$(git rev-parse HEAD)}" \
+    --argjson merged "$merged" \
+    '[{number: 42, head: {ref: $head}, base: {ref: "main"}, merge_commit_sha: $sha,
+      merged_at: (if $merged then "2026-11-01T00:00:00Z" else null end),
+      labels: ($ARGS.positional | map({name: .}))}]' \
+    --args "$@")
+  export GH_COMMIT_PULLS
 }
 
 # bump <label...>: runs the entrypoint for a merged PR with these labels.
@@ -121,6 +156,12 @@ assert_bumped() {
 # gh_called <text>: true when a recorded gh call contains <text>.
 gh_called() {
   grep -qF -- "$1" "$GH_LOG"
+}
+
+# gh_not_called <text>: true when no recorded gh call contains <text>. Use it
+# instead of `! gh_called`: in bats, a `!` command never fails the test.
+gh_not_called() {
+  ! grep -qF -- "$1" "$GH_LOG"
 }
 
 # remote_file <branch> <path>: prints a file from a branch on origin.

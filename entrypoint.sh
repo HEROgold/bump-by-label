@@ -1,10 +1,11 @@
 #!/bin/bash
 set -euo pipefail
 
-# Runs bump-by-label for one pull_request event. This file only picks the
-# path; each path's code is in lib/. A path's files are loaded only when the
-# run takes that path, so an option that turns a path off never loads it.
+# Runs bump-by-label for one pull_request or push event. This file only picks
+# the path; each path's code is in lib/. A path's files are loaded only when
+# the run takes that path, so an option that turns a path off never loads it.
 #
+#   push from no merged PR           stop
 #   PR not merged                    stop
 #   head branch is a bump branch     tag the merge commit (lib/tag.sh)
 #   no bump label                    stop
@@ -30,6 +31,7 @@ source "$LIB/labels.sh"
 read_inputs
 trap write_outputs EXIT
 require_event
+pr_from_push
 stop_unless_merged
 
 git config --local user.name "$COMMIT_USER_NAME"

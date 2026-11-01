@@ -17,6 +17,36 @@ event_field() {
   jq -r "$1" "$EVENT_PATH"
 }
 
+# pr_from_push: an event without a pull_request, such as a push, gets the
+# merged PR its commit came from. EVENT_PATH then points at a pull_request
+# event built from that PR, so the rest of the run handles the push like the
+# PR's merge. This lets a bump job wait for the checks of a push. A commit
+# that came from no merged PR ends the run.
+pr_from_push() {
+  local sha pulls pr_event
+  if [ "$(event_field 'has("pull_request")')" = true ]; then
+    return 0
+  fi
+  sha=$(event_field '.after // ""')
+  sha=${sha:-${GITHUB_SHA:-}}
+  if [ -z "$sha" ]; then
+    echo "Error: the event has no pull_request and no pushed commit (.after or GITHUB_SHA)." >&2
+    exit 1
+  fi
+
+  pulls=$(gh api "repos/${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is not set}/commits/$sha/pulls")
+  pr_event=$(mktemp)
+  # The list endpoint has no `merged` field, only merged_at.
+  jq '[.[] | select(.merged_at != null)] | first // empty
+    | {pull_request: (. + {merged: true})}' <<<"$pulls" >"$pr_event"
+  if [ ! -s "$pr_event" ]; then
+    echo "Commit $sha didn't come from a merged PR; nothing to bump or tag."
+    exit 0
+  fi
+  EVENT_PATH=$pr_event
+  echo "Commit $sha came from PR #$(event_field '.pull_request.number')."
+}
+
 # stop_unless_merged: ends the run unless the event is a merged PR. Only a
 # merged PR bumps or releases. An open or closed-unmerged PR also has a
 # merge_commit_sha (a test merge), which must never be tagged.

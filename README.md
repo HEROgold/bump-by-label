@@ -160,6 +160,42 @@ will merge later. `pr-number` is empty.
 
 Auto-merging the bump PR (#6) solves the same problem while keeping PR checks.
 
+## Push events
+
+The action also runs on a `push`, so a bump job can wait for the other jobs
+of the same CI run with `needs:`. On an event without a `pull_request`, it
+asks the GitHub API for the merged PR the pushed commit (`.after`, or
+`GITHUB_SHA`) came from, and handles the push like that PR's merge. A merged
+bump PR is tagged and a labelled PR is bumped, the same as on
+`pull_request: closed`. A commit that came from no merged PR bumps nothing.
+
+```yml
+on:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    # ...
+
+  bump-version:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v7
+      - uses: herogold/bump-by-label@main
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          command: "uv version --no-sync --bump"
+          validate: "uv version --short"
+```
+
 ## Permissions and failures
 
 The token needs `contents: write` and `pull-requests: write`. With
@@ -217,7 +253,7 @@ earlier step writes into the workspace are removed by the checkout.
 |---|---|
 | `lib/inputs.sh` | reading and checking the `INPUT_*` variables |
 | `lib/outputs.sh` | the action outputs, written on every exit |
-| `lib/event.sh` | reading the event, recognising bump branches |
+| `lib/event.sh` | reading the event, finding the PR of a push, recognising bump branches |
 | `lib/labels.sh` | creating labels, picking the bump type |
 | `lib/version.sh` | running `validate` and `command`, committing |
 | `lib/tag.sh` | release and moving tags (only with `create-tag`) |
