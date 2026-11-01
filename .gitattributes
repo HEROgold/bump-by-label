@@ -1,0 +1,2 @@
+# Shell scripts and fixtures run on Linux runners; CRLF breaks them.
+* text=auto eol=lf
