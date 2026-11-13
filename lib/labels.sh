@@ -35,3 +35,16 @@ bump_type_from_labels() {
     echo "patch"
   fi
 }
+
+# bump_label_count: prints how many of the three bump labels the PR has.
+# Same whole-name, case-insensitive match as bump_type_from_labels.
+bump_label_count() {
+  local labels name count=0
+  labels=$(event_field '.pull_request.labels[].name' 2>/dev/null || echo "")
+  for name in "$LABEL_MAJOR" "$LABEL_MINOR" "$LABEL_PATCH"; do
+    if grep -ixqF -- "$name" <<<"$labels"; then
+      count=$((count + 1))
+    fi
+  done
+  echo "$count"
+}

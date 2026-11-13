@@ -25,7 +25,7 @@ label logic and tags the merge commit `v<new>` (see [Tags](#tags)).
 | `command` | yes | | Command that bumps the version, run by bash. The bump type (`major`, `minor` or `patch`) replaces `{bump}`, or is appended when there is no `{bump}`. |
 | `validate` | yes | | Command that prints the current version, run by bash. The first `MAJOR.MINOR.PATCH` in its output is used. |
 | `base-branch` | no | `main` | Branch the bump PR is opened against. |
-| `mode` | no | `pr` | `pr` opens a bump PR; `push` commits the bump on the base branch (see [Push mode](#push-mode)). |
+| `mode` | no | `pr` | `pr` opens a bump PR; `push` commits the bump on the base branch (see [Push mode](#push-mode)); `branch` commits the bump to the open PR's own branch (see [Branch mode](#branch-mode)). |
 | `label-major` / `label-minor` / `label-patch` | no | `Major` / `Minor` / `Patch` | Bump labels. Whole names, ignoring case: `dispatch` is not `Patch`. Major beats minor beats patch. |
 | `label-major-color` / `label-minor-color` / `label-patch-color` | no | `d93f0b` / `0e8a16` / `0075ca` | Colours for bump labels the action creates. |
 | `labels-to-add` | no | | Comma-separated labels for the bump PR, e.g. `release,skip-changelog`. Missing ones are created. |
@@ -160,6 +160,33 @@ will merge later. `pr-number` is empty.
 
 Auto-merging the bump PR (#6) solves the same problem while keeping PR checks.
 
+## Branch mode
+
+With `mode: branch` the action bumps the version on the open PR's own branch,
+as soon as a version label is added. Nothing waits for the merge. Trigger it
+on `pull_request` with `types: [opened, reopened, labeled, unlabeled,
+synchronize]`. It does nothing for any other action or event.
+
+Each run compares the branch with its base branch. The branch ends up with one
+bump commit on top of the base version, whatever the labels were before.
+Changing the label from `Minor` to `Major` reverts the earlier bump commit and
+adds a new one. Removing the label adds a `Reset version to X.Y.Z` commit.
+Only commits by `commit-user-email` with a bump or reset title are reverted. If
+the branch version differs from the base and no such commit explains it, the
+run fails and asks you to fix the version by hand.
+
+- The workflow needs `contents: write`. The run never uses `--force`. If the
+  branch moved during the run, it redoes the bump from the new tip, up to 3
+  attempts.
+- Pushes made with `GITHUB_TOKEN` start CI runs that wait for approval. Use an
+  app token or a PAT to avoid that.
+- PRs from forks fail, because the token can't push to a fork.
+- A PR with more than one version label fails.
+- The working tree must be clean, and `validate` must not change files.
+- These inputs are ignored: `base-branch` (the PR's base is used),
+  `create-tag`, `tag-prefix`, `moving-tags`, `labels-to-add` and
+  `branch-prefix`. No tag is created.
+
 ## Push events
 
 The action also runs on a `push`, so a bump job can wait for the other jobs
@@ -275,6 +302,7 @@ one release.
 | `lib/version.sh` | running `validate` and `command`, committing |
 | `lib/tag.sh` | release and moving tags (only with `create-tag`) |
 | `lib/push-mode.sh` | push mode (only with `mode: push`) |
+| `lib/branch-mode.sh` | the bump on a PR's own branch (only with `mode: branch`) |
 | `lib/pr-mode.sh` | the bump branch and PR (only with `mode: pr`) |
 
 Tests use [bats-core](https://github.com/bats-core/bats-core). They run
