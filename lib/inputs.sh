@@ -10,9 +10,9 @@ read_inputs() {
   BASE_BRANCH=${INPUT_BASE_BRANCH:-main}
   MODE=${INPUT_MODE:-pr}
   case $MODE in
-    pr | push) ;;
+    pr | push | branch) ;;
     *)
-      echo "Error: mode must be 'pr' or 'push', not '$MODE'." >&2
+      echo "Error: mode must be 'pr', 'push' or 'branch', not '$MODE'." >&2
       exit 1
       ;;
   esac

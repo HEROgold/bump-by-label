@@ -5,6 +5,8 @@ set -euo pipefail
 # the path; each path's code is in lib/. A path's files are loaded only when
 # the run takes that path, so an option that turns a path off never loads it.
 #
+#   mode: branch                     bump the open PR's own branch (lib/branch-mode.sh),
+#                                    before every path below
 #   push from no merged PR           stop
 #   PR not merged                    stop
 #   head branch is a bump branch     tag the merge commit (lib/tag.sh)
@@ -31,6 +33,20 @@ source "$LIB/labels.sh"
 read_inputs
 trap write_outputs EXIT
 require_event
+
+# mode: branch acts on an open PR, so it runs before the merged-PR checks.
+if [ "$MODE" = branch ]; then
+  git config --local user.name "$COMMIT_USER_NAME"
+  git config --local user.email "$COMMIT_USER_EMAIL"
+  ensure_bump_labels
+  # shellcheck source=lib/version.sh
+  source "$LIB/version.sh"
+  # shellcheck source=lib/branch-mode.sh
+  source "$LIB/branch-mode.sh"
+  publish_branch
+  exit 0
+fi
+
 pr_from_push
 stop_unless_merged
 

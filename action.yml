@@ -16,7 +16,7 @@ inputs:
     required: false
     default: 'main'
   mode:
-    description: '`pr` opens a bump PR. `push` commits the bump on the base branch and pushes it (never forced).'
+    description: '`pr` opens a bump PR after merge. `push` commits the bump on the base branch after merge (never forced). `branch` commits the bump to the open PR''s own branch as soon as a version label is added; the commit''s CI run then waits for approval because GITHUB_TOKEN pushed it.'
     required: false
     default: 'pr'
   label-major:
